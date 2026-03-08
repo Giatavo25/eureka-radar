@@ -3,37 +3,35 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-# 1. CREDENCIALES LIMPIAS (Sin espacios)
+# 1. CREDENCIALES LIMPIAS SEGÚN BOTFATHER
 TOKEN = "8629668892:AAHSjT0XS9zbf6uQ5csBW1oBfHOG-pvPu3E"
 CHAT_ID = "6667453052"
 API_KEY = "01a9b00e2d7b83171feae07178d45c40"
 
-st.set_page_config(page_title="RADAR EUREKA PRO")
+st.set_page_config(page_title="RADAR EUREKA PRO", layout="wide")
 
-# 2. FUNCIÓN DE ENVÍO DIRECTO
-def enviar_mensaje(texto):
+# 2. FUNCIÓN DE ENVÍO
+def enviar_alerta(texto):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    params = {"chat_id": CHAT_ID, "text": texto, "parse_mode": "Markdown"}
+    payload = {"chat_id": CHAT_ID, "text": texto, "parse_mode": "Markdown"}
     try:
-        r = requests.post(url, params=params, timeout=10)
+        r = requests.post(url, data=payload, timeout=10)
         return r.ok
     except:
         return False
 
 st.title("🎯 Radar Eureka Pro")
 
-# 3. BARRA LATERAL DE CONTROL
-with st.sidebar:
-    st.header("Panel de Control")
-    if st.button("🔔 PROBAR CONEXIÓN"):
-        if enviar_mensaje("🚀 ¡Conexión Exitosa! El Radar Eureka está vinculado a tu celular."):
-            st.success("✅ Revisa tu Telegram ahora.")
-        else:
-            st.error("❌ Error. Verifica el Bot en Telegram.")
+# 3. PRUEBA DE CONEXIÓN
+if st.sidebar.button("🔔 PROBAR TELEGRAM"):
+    if enviar_alerta("🚀 ¡CONEXIÓN EXITOSA! Tu bot @Mi_Eureka_bot está vinculado."):
+        st.sidebar.success("✅ ¡Llegó el mensaje!")
+    else:
+        st.sidebar.error("❌ Sigue fallando. Revisa el /start.")
 
-# 4. RASTREADOR DE MERCADO (NBA HOY)
-if st.button("🚀 RASTREAR NBA HOY"):
-    st.write(f"### 🔎 Escaneando Jornada: {datetime.now().strftime('%d/%m/%Y')}")
+# 4. RASTREADOR NBA HOY
+if st.button("🚀 RASTREAR NBA DE HOY"):
+    st.write(f"### 🔎 Escaneando: {datetime.now().strftime('%d/%m/%Y')}")
     
     url_nba = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=totals"
     
@@ -51,17 +49,17 @@ if st.button("🚀 RASTREAR NBA HOY"):
                 
                 resultados.append({
                     "Partido": f"{away} @ {home}",
-                    "Línea Casa": linea,
+                    "Línea": linea,
                     "Estado": "🌟 EUREKA"
                 })
 
         if resultados:
             st.table(pd.DataFrame(resultados))
-            # Envío automático al detectar juegos
-            enviar_mensaje(f"🏀 *NBA HOY*: Se detectaron {len(resultados)} juegos para analizar.")
-            st.success("📱 Alerta enviada al celular.")
+            # Envío automático
+            enviar_alerta(f"🏀 *NBA HOY*: Se detectaron {len(resultados)} juegos.")
+            st.success("📱 Alerta enviada al Telegram.")
         else:
-            st.warning("No hay juegos de NBA programados para hoy en la API.")
+            st.warning("No hay más juegos de NBA para hoy.")
             
     except Exception as e:
-        st.error(f"Error de sistema: {e}")
+        st.error(f"Error: {e}")
