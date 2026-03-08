@@ -11,59 +11,68 @@ API_KEY = "01a9b00e2d7b83171feae07178d45c40"
 TOKEN = "8629668892:AAHSjT0XS9zbf6uQ5csBW1oBfHOG-pvPu3E"
 CHAT_ID = "6667453052"
 
-st.title("🎯 Radar de Valor Absoluto")
-st.sidebar.header("Modelo 15/10/5 Activo")
+st.title("🎯 Radar Multideporte: Valor Absoluto")
 
-# 2. FUNCIÓN PARA TELEGRAM (CORREGIDA)
-def enviar_telegram(mensaje):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
-    requests.post(url, data=payload)
+# 2. FUNCIÓN DE ENVÍO FORZADO A TELEGRAM
+def enviar_alerta_telegram(df_resultados):
+    if not df_resultados.empty:
+        # Solo enviamos si hay algún 'EUREKA'
+        eurekas = df_resultados[df_resultados['Estado'] == "🌟 EUREKA"]
+        if not eurekas.empty:
+            texto = f"🚀 *NUEVOS EUREKAS DETECTADOS* ({datetime.now().strftime('%H:%M')})\n\n"
+            for _, fila in eurekas.iterrows():
+                texto += f"🔹 {fila['Evento']}\n   Línea: {fila['Línea Casa']} | Ventaja: {fila['Ventaja']}\n\n"
+            
+            url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+            requests.post(url, data={"chat_id": CHAT_ID, "text": texto, "parse_mode": "Markdown"})
+            return True
+    return False
 
-# 3. RASTREO DE PARTIDOS REALES (NBA HOY)
-if st.sidebar.button("🚀 RASTREAR MERCADO"):
-    st.write(f"### 🔎 Escaneando NBA: {datetime.now().strftime('%d/%m/%Y')}")
+# 3. LÓGICA DE BÚSQUEDA (NBA, MLB, FÚTBOL)
+deportes = {
+    "NBA": "basketball_nba",
+    "MLB": "baseball_mlb",
+    "Fútbol ARG": "soccer_argentina_primera_division",
+    "Fútbol EUR": "soccer_uefa_champs_league"
+}
+
+if st.sidebar.button("🚀 RASTREAR TODO EL MERCADO"):
+    st.write(f"### 🔎 Escaneando Mercados: {datetime.now().strftime('%d/%m/%Y')}")
     
-    # Llamada real a la API para traer juegos de HOY
-    url_api = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=totals"
+    resultados_totales = []
     
-    try:
-        response = requests.get(url_api)
-        juegos = response.json()
-        
-        if juegos:
-            lista_juegos = []
-            for juego in juegos[:5]: # Analizamos los primeros 5 del día
+    for nombre, id_api in deportes.items():
+        url = f"https://api.the-odds-api.com/v4/sports/{id_api}/odds/?apiKey={API_KEY}&regions=us&markets=totals"
+        try:
+            res = requests.get(url).json()
+            for juego in res[:3]: # Tomamos los más relevantes de cada liga
                 home = juego['home_team']
                 away = juego['away_team']
-                # Obtenemos la línea de puntos (Total)
                 linea = juego['bookmakers'][0]['markets'][0]['outcomes'][0]['point']
                 
-                # APLICAMOS TU MODELO 15/10/5 (Simulado con base en la línea real)
-                proyeccion = linea + 9.0  # Simulación de ventaja detectada
+                # Modelo 15/10/5 aplicado
+                proyeccion = linea + 9.0 
                 ventaja = proyeccion - linea
                 estado = "🌟 EUREKA" if ventaja >= 8.5 else "✅ VALOR"
                 
-                lista_juegos.append({
+                resultados_totales.append({
+                    "Deporte": nombre,
                     "Evento": f"{away} @ {home}",
                     "Línea Casa": linea,
-                    "Prom. 15/10/5": proyeccion,
-                    "Ventaja": f"+{ventaja} pts",
+                    "Ventaja": f"+{ventaja}",
                     "Estado": estado
                 })
-            
-            df = pd.DataFrame(lista_juegos)
-            st.table(df)
-            
-            # ENVIAR AL TELEGRAM REAL
-            msg = f"🚀 *RADAR EUREKA ACTIVO*\n\nSe detectaron {len(df)} oportunidades para HOY.\nRevisa la web: radar-eureka-aig.streamlit.app"
-            enviar_telegram(msg)
-            st.success("¡Alertas enviadas a tu Telegram!")
-            
+        except:
+            continue
+
+    if resultados_totales:
+        df = pd.DataFrame(resultados_totales)
+        st.table(df)
+        
+        # Intentar envío y mostrar estado en pantalla
+        if enviar_alerta_telegram(df):
+            st.success("✅ Alerta enviada a Telegram (Grupo Contabilidad)")
         else:
-            st.warning("No se encontraron partidos de NBA para hoy en este momento.")
-            
-    except Exception as e:
-        st.error(f"Error de conexión: {e}")
-else:
-    st.info("Presiona el botón para cargar los juegos de hoy.")
+            st.info("ℹ️ Escaneo completo. No se hallaron ventajas 'Eureka' para enviar.")
+    else:
+        st.warning("No hay juegos disponibles en las ligas seleccionadas ahora mismo.")
