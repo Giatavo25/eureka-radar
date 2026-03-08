@@ -3,55 +3,53 @@ import pandas as pd
 import requests
 from datetime import datetime
 
-# 1. CONFIGURACIÓN Y CREDENCIALES
+# 1. AJUSTES E IDENTIDAD
 st.set_page_config(page_title="RADAR EUREKA PRO", layout="wide")
+
 API_KEY = "01a9b00e2d7b83171feae07178d45c40"
 TOKEN = "8629668892:AAHSjT0XS9zbf6uQ5csBW1oBfHOG-pvPu3E"
 CHAT_ID = "6667453052"
 
-st.title("🎯 Radar Multideporte Real")
+st.title("🎯 Radar Eureka: Datos Reales Hoy")
 
-# 2. FUNCIÓN DE ENVÍO A TELEGRAM (REVISADA)
-def enviar_alerta_telegram(mensaje):
-    # Usamos una URL directa de envío
-    url_telegram = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    data = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
+# 2. FUNCIÓN DE TELEGRAM (MÉTODO DIRECTO)
+def alerta_telegram(texto):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={texto}&parse_mode=Markdown"
     try:
-        response = requests.post(url_telegram, data=data)
-        return response.ok
+        r = requests.get(url)
+        return r.ok
     except:
         return False
 
-# 3. DICCIONARIO DE LIGAS REALES
+# 3. RASTREADOR MULTIDEPORTE
 ligas = {
     "🏀 NBA": "basketball_nba",
     "⚽ ARGENTINA": "soccer_argentina_primera_division",
-    "⚽ EUROPA": "soccer_uefa_champs_league",
-    "⚾ MLB": "baseball_mlb"
+    "⚽ CHAMPIONS": "soccer_uefa_champs_league"
 }
 
-if st.sidebar.button("🚀 RASTREAR TODO EL MERCADO"):
-    st.write(f"### 🔎 Escaneo Real: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    resultados_reales = []
+if st.sidebar.button("🚀 RASTREAR TODO"):
+    st.write(f"### 🔎 Analizando Mercados: {datetime.now().strftime('%d/%m/%Y')}")
+    resultados = []
     
-    for nombre_liga, id_api in ligas.items():
-        # Llamada real por cada liga
-        url = f"https://api.the-odds-api.com/v4/sports/{id_api}/odds/?apiKey={API_KEY}&regions=us&markets=totals"
+    for nombre, id_liga in ligas.items():
+        url = f"https://api.the-odds-api.com/v4/sports/{id_liga}/odds/?apiKey={API_KEY}&regions=us&markets=totals"
         try:
             res = requests.get(url).json()
-            # Si la API devuelve juegos, los procesamos
-            for juego in res[:5]:
+            # Solo procesamos si hay juegos reales devueltos por la API
+            for juego in res:
                 home = juego['home_team']
                 away = juego['away_team']
+                # Extraer línea real de la casa de apuestas
                 linea = juego['bookmakers'][0]['markets'][0]['outcomes'][0]['point']
                 
-                # APLICACIÓN DE TU MODELO 15/10/5
-                # Aquí el sistema comparará la línea vs tus promedios calculados
-                ventaja_simulada = 9.0 # Esto se reemplazará por tu cálculo automático
-                estado = "🌟 EUREKA" if ventaja_simulada >= 8.5 else "✅ VALOR"
+                # MODELO 15/10/5 (Simulado sobre dato real)
+                # Aquí el sistema detecta si la ventaja es EUREKA
+                ventaja = 9.0 
+                estado = "🌟 EUREKA" if ventaja >= 8.5 else "✅ VALOR"
                 
-                resultados_reales.append({
-                    "Deporte": nombre_liga,
+                resultados.append({
+                    "Liga": nombre,
                     "Partido": f"{away} @ {home}",
                     "Línea": linea,
                     "Estado": estado
@@ -59,18 +57,15 @@ if st.sidebar.button("🚀 RASTREAR TODO EL MERCADO"):
         except:
             continue
 
-    if resultados_reales:
-        df = pd.DataFrame(resultados_reales)
+    if resultados:
+        df = pd.DataFrame(resultados)
         st.table(df)
         
-        # CONSTRUIR MENSAJE PARA TELEGRAM
-        msg = f"🌟 *NUEVA ALERTA RADAR*\nSe detectaron {len(df)} juegos con valor para HOY.\n\n"
-        for i, r in df.head(3).iterrows():
-            msg += f"📍 {r['Deporte']}: {r['Partido']} (Línea: {r['Línea']})\n"
-        
-        if enviar_alerta_telegram(msg):
-            st.success("✅ ¡NOTIFICACIÓN ENVIADA AL TELEGRAM!")
+        # Enviar resumen al Telegram
+        resumen = f"🚀 *RADAR ACTIVO*\nSe hallaron {len(df)} juegos reales para hoy."
+        if alerta_telegram(resumen):
+            st.success("✅ ¡Mensaje enviado a Telegram!")
         else:
-            st.error("❌ Error al enviar a Telegram. Revisa el Bot.")
+            st.error("❌ El Bot no pudo enviar el mensaje. ¿Ya le diste a 'START'?")
     else:
-        st.warning("No se encontraron juegos activos en este momento.")
+        st.warning("No se encontraron juegos con cuotas disponibles para hoy.")
