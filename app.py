@@ -3,44 +3,49 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-# 1. CREDENCIALES LIMPIAS SEGÚN BOTFATHER
+# CREDENCIALES (Copiadas letra por letra de tus capturas)
 TOKEN = "8629668892:AAHSjT0XS9zbf6uQ5csBW1oBfHOG-pvPu3E"
 CHAT_ID = "6667453052"
 API_KEY = "01a9b00e2d7b83171feae07178d45c40"
 
-st.set_page_config(page_title="RADAR EUREKA PRO", layout="wide")
+st.set_page_config(page_title="RADAR EUREKA FINAL", layout="wide")
 
-# 2. FUNCIÓN DE ENVÍO
+# FUNCIÓN DE ENVÍO POR MÉTODO GET (Más compatible)
 def enviar_alerta(texto):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": texto, "parse_mode": "Markdown"}
+    # Limpiamos el texto de espacios raros
+    texto_limpio = texto.replace(" ", "%20")
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={texto_limpio}"
     try:
-        r = requests.post(url, data=payload, timeout=10)
-        return r.ok
-    except:
-        return False
+        r = requests.get(url, timeout=15)
+        return r.json()
+    except Exception as e:
+        return {"ok": False, "description": str(e)}
 
-st.title("🎯 Radar Eureka Pro")
+st.title("🎯 Radar Eureka: Intento Final de Conexión")
 
-# 3. PRUEBA DE CONEXIÓN
-if st.sidebar.button("🔔 PROBAR TELEGRAM"):
-    if enviar_alerta("🚀 ¡CONEXIÓN EXITOSA! Tu bot @Mi_Eureka_bot está vinculado."):
-        st.sidebar.success("✅ ¡Llegó el mensaje!")
-    else:
-        st.sidebar.error("❌ Sigue fallando. Revisa el /start.")
+# BARRA LATERAL CON DIAGNÓSTICO EN VIVO
+with st.sidebar:
+    st.header("Soporte Técnico")
+    if st.button("🔔 ENVIAR PRUEBA AHORA"):
+        res = enviar_alerta("Conexion_Exitosa_Gustavo")
+        if res.get("ok"):
+            st.success("✅ ¡MENSAJE ENVIADO! Revisa Telegram.")
+        else:
+            st.error(f"❌ Error: {res.get('description')}")
+            st.info("Asegúrate de haberle escrito algo al bot @Mi_Eureka_bot hoy.")
 
-# 4. RASTREADOR NBA HOY
-if st.button("🚀 RASTREAR NBA DE HOY"):
-    st.write(f"### 🔎 Escaneando: {datetime.now().strftime('%d/%m/%Y')}")
+# BOTÓN DE RASTREO NBA
+if st.button("🚀 RASTREAR NBA"):
+    st.write(f"### 🔎 Jornada: {datetime.now().strftime('%d/%m/%Y')}")
     
-    url_nba = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=totals"
+    url_api = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=totals"
     
     try:
-        res = requests.get(url_nba).json()
+        res_api = requests.get(url_api).json()
         resultados = []
         hoy = datetime.now().strftime('%Y-%m-%d')
 
-        for juego in res:
+        for juego in res_api:
             fecha_juego = juego['commence_time'].split('T')[0]
             if fecha_juego == hoy:
                 home = juego['home_team']
@@ -55,11 +60,9 @@ if st.button("🚀 RASTREAR NBA DE HOY"):
 
         if resultados:
             st.table(pd.DataFrame(resultados))
-            # Envío automático
-            enviar_alerta(f"🏀 *NBA HOY*: Se detectaron {len(resultados)} juegos.")
-            st.success("📱 Alerta enviada al Telegram.")
+            enviar_alerta(f"NBA_HOY:_Se_detectaron_{len(resultados)}_juegos")
         else:
-            st.warning("No hay más juegos de NBA para hoy.")
+            st.warning("No hay juegos de NBA para hoy.")
             
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error API: {e}")
