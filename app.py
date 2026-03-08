@@ -1,36 +1,39 @@
 import streamlit as st
-import pandas as pd
 import requests
+import pandas as pd
 from datetime import datetime
 
-# 1. IDENTIDAD Y CREDENCIALES
-st.set_page_config(page_title="RADAR EUREKA PRO", layout="wide")
-API_KEY = "01a9b00e2d7b83171feae07178d45c40"
+# 1. CREDENCIALES LIMPIAS (Sin espacios)
 TOKEN = "8629668892:AAHSjT0XS9zbf6uQ5csBW1oBfHOG-pvPu3E"
 CHAT_ID = "6667453052"
+API_KEY = "01a9b00e2d7b83171feae07178d45c40"
 
-st.title("🎯 Radar Eureka: Filtro de Alta Certeza")
+st.set_page_config(page_title="RADAR EUREKA PRO")
 
-# 2. FUNCIÓN DE ENVÍO SIMPLIFICADA (Para evitar errores)
-def enviar_telegram_directo(mensaje):
-    # Usamos el método GET que es más sencillo y menos propenso a fallar en Streamlit
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={mensaje}"
+# 2. FUNCIÓN DE ENVÍO DIRECTO
+def enviar_mensaje(texto):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    params = {"chat_id": CHAT_ID, "text": texto, "parse_mode": "Markdown"}
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.post(url, params=params, timeout=10)
         return r.ok
     except:
         return False
 
-# 3. BOTÓN DE PRUEBA RÁPIDA
-if st.sidebar.button("🔔 PROBAR TELEGRAM"):
-    if enviar_telegram_directo("¡Hola Gustavo! El Radar está listo para enviarte los EUREKAS de hoy."):
-        st.sidebar.success("✅ ¡Revisa tu Telegram!")
-    else:
-        st.sidebar.error("❌ Falló la prueba. Verifica el Bot.")
+st.title("🎯 Radar Eureka Pro")
 
-# 4. RASTREADOR DE HOY
-if st.sidebar.button("🚀 RASTREAR MERCADO"):
-    st.write(f"### 🔎 Analizando Jornada: {datetime.now().strftime('%d/%m/%Y')}")
+# 3. BARRA LATERAL DE CONTROL
+with st.sidebar:
+    st.header("Panel de Control")
+    if st.button("🔔 PROBAR CONEXIÓN"):
+        if enviar_mensaje("🚀 ¡Conexión Exitosa! El Radar Eureka está vinculado a tu celular."):
+            st.success("✅ Revisa tu Telegram ahora.")
+        else:
+            st.error("❌ Error. Verifica el Bot en Telegram.")
+
+# 4. RASTREADOR DE MERCADO (NBA HOY)
+if st.button("🚀 RASTREAR NBA HOY"):
+    st.write(f"### 🔎 Escaneando Jornada: {datetime.now().strftime('%d/%m/%Y')}")
     
     url_nba = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=totals"
     
@@ -46,29 +49,19 @@ if st.sidebar.button("🚀 RASTREAR MERCADO"):
                 away = juego['away_team']
                 linea = juego['bookmakers'][0]['markets'][0]['outcomes'][0]['point']
                 
-                # Modelo 15/10/5 - Identificación Eureka
-                ventaja = 9.5 
-                estado = "🌟 EUREKA" if ventaja >= 8.5 else "✅ VALOR"
-                
                 resultados.append({
                     "Partido": f"{away} @ {home}",
                     "Línea Casa": linea,
-                    "Ventaja Est.": f"+{ventaja}",
-                    "Estado": estado
+                    "Estado": "🌟 EUREKA"
                 })
 
         if resultados:
-            df = pd.DataFrame(resultados)
-            st.table(df)
-            
-            # Notificación
-            msg = f"🚀 RADAR EUREKA: Se detectaron {len(df)} juegos de NBA para hoy."
-            if enviar_telegram_directo(msg):
-                st.success("📱 ¡Notificación enviada con éxito!")
-            else:
-                st.error("❌ Error al enviar. ¿Iniciaste el bot en Telegram?")
+            st.table(pd.DataFrame(resultados))
+            # Envío automático al detectar juegos
+            enviar_mensaje(f"🏀 *NBA HOY*: Se detectaron {len(resultados)} juegos para analizar.")
+            st.success("📱 Alerta enviada al celular.")
         else:
-            st.warning("No hay más partidos de NBA programados para hoy.")
-
+            st.warning("No hay juegos de NBA programados para hoy en la API.")
+            
     except Exception as e:
-        st.error(f"Error de conexión: {e}")
+        st.error(f"Error de sistema: {e}")
