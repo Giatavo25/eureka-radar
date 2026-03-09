@@ -13,13 +13,13 @@ if 'proyecciones_activas' not in st.session_state:
 
 # --- 1. MOTOR DE PROYECCIÓN (Modelo 15/10/5) ---
 def calcular_proyeccion_eureka(equipo, deporte):
-    """Lógica de Eficiencia Ajustada basada en promedios recientes."""
+    # Lógica de Eficiencia Ajustada basada en promedios recientes
     base = 112.0 if deporte == "NBA" else 5.0
-    return base + 3.1 # Simulación de momentum actual
+    return base + 3.1 
 
 # --- 2. CONECTOR DE DATOS (Fecha Actual Dinámica) ---
 def fetch_api(endpoint, sport):
-    # Usamos daysFrom=1 para asegurar que traiga lo que está ocurriendo HOY [cite: 2026-03-08]
+    # Usamos daysFrom=1 para asegurar que traiga lo que está ocurriendo HOY
     url = f"https://api.the-odds-api.com/v4/sports/{sport}/{endpoint}/?apiKey={API_KEY}&regions=us&daysFrom=1"
     try:
         res = requests.get(url)
@@ -33,7 +33,7 @@ st.sidebar.header("Control de Mercados")
 deporte_sel = st.sidebar.selectbox("Deporte", ["NBA", "NHL", "MLB"])
 deportes_map = {"NBA": "basketball_nba", "NHL": "icehockey_nhl", "MLB": "baseball_mlb"}
 
-# Mantenemos el menú que ya traíamos
+# Menú de navegación
 menu = ["📡 Escáner del Día", "⏱️ Monitor Live", "📊 Partidos Finalizados"]
 choice = st.sidebar.radio("Navegación", menu)
 
@@ -42,7 +42,7 @@ fecha_hoy = datetime.now().strftime('%d/%m/%Y')
 
 # --- VISTA 1: ESCÁNER DEL DÍA (Pre-Match) ---
 if choice == "📡 Escáner del Día":
-    st.header(f"📅 Partidos Reales: {fecha_hoy}") [cite: 2026-03-08]
+    st.header(f"📅 Partidos Reales: {fecha_hoy}")
     odds = fetch_api("odds", deportes_map[deporte_sel])
     
     if not odds:
@@ -68,7 +68,7 @@ if choice == "📡 Escáner del Día":
                         "tipo": "Over" if diff > 0 else "Under"
                     }
 
-                    # Especificidad Eureka: Nombre del equipo con ventaja
+                    # Identificación específica del equipo con ventaja
                     if abs(diff) >= 8.5:
                         target = st.session_state.proyecciones_activas[juego['id']]['equipo']
                         st.success(f"🌟 **eureka: Ventaja detectada para {target} en {st.session_state.proyecciones_activas[juego['id']]['tipo']} ({abs(diff):.1f} pts de diferencia)**")
@@ -82,15 +82,15 @@ elif choice == "⏱️ Monitor Live":
     st.header("Seguimiento en Vivo")
     scores = fetch_api("scores", deportes_map[deporte_sel])
     
-    activos = [s for s in scores if not s['completed']]
+    activos = [s for s in scores if s.get('completed') is False]
     if not activos:
         st.warning("No hay partidos en curso actualmente.")
     else:
         for s in activos:
             c1, c2 = st.columns([3, 1])
             with c1:
-                score_away = s['scores'][0]['score'] if s['scores'] else 0
-                score_home = s['scores'][1]['score'] if s['scores'] else 0
+                score_away = s['scores'][0]['score'] if s.get('scores') and len(s['scores']) > 0 else 0
+                score_home = s['scores'][1]['score'] if s.get('scores') and len(s['scores']) > 1 else 0
                 st.subheader(f"{s['away_team']} {score_away} - {score_home} {s['home_team']}")
             with c2:
                 st.info("⏱️ EN JUEGO")
@@ -101,13 +101,13 @@ elif choice == "📊 Partidos Finalizados":
     st.header(f"✅ Auditoría de Resultados: {deporte_sel}")
     scores = fetch_api("scores", deportes_map[deporte_sel])
     
-    finalizados = [s for s in scores if s['completed']]
+    finalizados = [s for s in scores if s.get('completed') is True]
     if not finalizados:
         st.write("Aún no hay partidos terminados hoy.")
     else:
         for s in finalizados:
             j_id = s['id']
-            pts_finales = sum(int(score['score']) for score in s['scores'])
+            pts_finales = sum(int(score['score']) for score in s['scores']) if s.get('scores') else 0
             
             with st.container():
                 c1, c2, c3 = st.columns([2, 1, 2])
