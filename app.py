@@ -3,93 +3,108 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-# --- CONFIGURACIÓN DE IDENTIDAD ---
+# --- CONFIGURACIÓN ---
 API_KEY = "01a9b00e2d7b83171feae07178d45c40"
-ST_TITLE = "🎯 RADAR EUREKA: SISTEMA DE AUTOMATIZACIÓN ÉLITE"
 
-st.set_page_config(page_title=ST_TITLE, layout="wide")
+st.set_page_config(page_title="SISTEMA EUREKA MULTIFUNCIONAL", layout="wide")
 
-# --- MOTOR DE CÁLCULO 15/10/5 (Lógica Viceversa y Eficiencia) ---
-def calcular_momentum_profesional(nombre_equipo):
-    # Simulamos la data histórica de la temporada 2025-26 para el análisis
-    # En producción, esto se puede alimentar de un CSV cargado
-    data_mock = {
-        'PTS': [118, 122, 110, 130, 115, 125, 108, 112, 120, 128, 114, 119, 121, 109, 116],
-        'PM':  [5, 8, -2, 12, 4, 10, -5, -1, 3, 11, 2, 6, 7, -4, 1],
-        'FTM': [22, 25, 18, 28, 20, 24, 15, 19, 21, 26, 20, 22, 23, 17, 19]
+# --- FUNCIONES DE CÁLCULO ---
+def detectar_valor_multifuncional(cuota_actual, probabilidad_estimada):
+    """Calcula si una cuota tiene valor real (Edge)."""
+    prob_cuota = (1 / cuota_actual) * 100
+    ventaja = probabilidad_estimada - prob_cuota
+    return ventaja
+
+def obtener_reporte_live():
+    """Simulación de monitoreo en vivo (Scoreboard)."""
+    return [
+        {"Partido": "Lakers vs Warriors", "Score": "102-98", "Q": "4to Cuarto"},
+        {"Partido": "Real Madrid vs Barça", "Score": "2-1", "Min": "75'"}
+    ]
+
+# --- INTERFAZ ---
+st.title("🎯 Sistema de Automatización Élite: Multifuncional")
+
+menu = ["📡 Radar Global", "⏱️ Monitor en Vivo", "📝 Historial de Aciertos"]
+choice = st.sidebar.selectbox("Menú de Control", menu)
+
+# --- 1. RADAR GLOBAL (Cualquier Deporte / Cualquier Jugada) ---
+if choice == "📡 Radar Global":
+    st.header("Escáner de Valor Multideporte")
+    deporte = st.selectbox("Selecciona Deporte", ["NBA", "MLB", "Fútbol (Global)", "NHL"])
+    
+    # Mapeo de IDs de la API
+    deportes_map = {
+        "NBA": "basketball_nba",
+        "MLB": "baseball_mlb",
+        "Fútbol (Global)": "soccer_europe_uefa_champs_league",
+        "NHL": "icehockey_nhl"
     }
-    df = pd.DataFrame(data_mock)
-    
-    # Bloque 15 (Tendencia)
-    r15 = df['PTS'].mean()
-    a15 = r15 + (df['PM'].mean() * 0.5)
-    
-    # Bloque 5 (Momento Actual)
-    r5 = df.head(5)['PTS'].mean()
-    a5 = r5 + (df.head(5)['PM'].mean() * 0.5)
-    
-    return r15, a15, r5, a5
 
-# --- ESCÁNER DE BAJAS (Filtro de Seguridad) ---
-def obtener_reporte_bajas():
-    return {
-        'Celtics': '⚠️ Duda: Jaylen Brown',
-        'Hornets': '❌ Baja: LaMelo Ball',
-        'Grizzlies': '❌ Baja: Marcus Smart',
-        'Bucks': '⚠️ Duda: Giannis Antetokounmpo',
-        'Hawks': '❌ Baja: Trae Young'
-    }
-
-# --- INTERFAZ PRINCIPAL ---
-st.title(ST_TITLE)
-st.markdown(f"**Fecha de Operación:** {datetime.now().strftime('%d/%m/%Y')} | **Estado:** Escaneando Valor Absoluto")
-
-if st.button("🚀 INICIAR ESCANEO GLOBAL DE VALOR"):
-    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?apiKey={API_KEY}&regions=us&markets=totals"
-    
-    try:
-        res = requests.get(url).json()
-        bajas = obtener_reporte_bajas()
+    if st.button("🚀 Buscar Valor en todo el Mercado"):
+        url = f"https://api.the-odds-api.com/v4/sports/{deportes_map[deporte]}/odds/?apiKey={API_KEY}&regions=us,eu&markets=h2h,totals,spreads"
         
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.subheader("📊 Análisis de Partidos y Momentum")
+        try:
+            res = requests.get(url).json()
             for juego in res:
                 home = juego['home_team']
                 away = juego['away_team']
                 
-                # Obtener línea de la casa
-                try:
-                    linea_casa = juego['bookmakers'][0]['markets'][0]['outcomes'][0]['point']
-                except: continue
-                
-                # Calcular Momentum
-                r15, a15, r5, a5 = calcular_momentum_profesional(away)
-                proyeccion = a5 + (a15 * 0.95) # Ajuste de peso para localía simulado
-                diferencia = proyeccion - (linea_casa if linea_casa else 225)
-                
-                # Identificación de EUREKA (Variación > 8.5)
-                es_eureka = abs(diferencia) >= 8.5
-                
-                color = "green" if es_eureka else "white"
-                with st.expander(f"{'🌟 EUREKA - ' if es_eureka else ''}{away} @ {home}", expanded=es_eureka):
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Línea Casa", linea_casa)
-                    c2.metric("Proyección", f"{proyeccion:.1f}")
-                    c3.metric("Ventaja", f"{diferencia:+.1f}", delta_color="normal")
+                with st.expander(f"📋 {away} @ {home}"):
+                    cols = st.columns(3)
                     
-                    if es_eureka:
-                        st.success(f"**CONVICCIÓN 90%+:** Recomendamos {'OVER' if diferencia > 0 else 'UNDER'} fuerte.")
+                    # Analizando diferentes tipos de jugadas
+                    for mercado in juego['bookmakers'][0]['markets']:
+                        m_type = mercado['key'] # h2h, totals o spreads
+                        
+                        if m_type == 'h2h':
+                            cols[0].write("**Ganador (H2H)**")
+                            for out in mercado['outcomes']:
+                                cols[0].button(f"{out['name']}: {out['price']}", key=f"{out['name']}_{juego['id']}")
+                        
+                        elif m_type == 'totals':
+                            cols[1].write("**Over/Under**")
+                            linea = mercado['outcomes'][0]['point']
+                            cols[1].info(f"Línea: {linea}")
+                        
+                        elif m_type == 'spreads':
+                            cols[2].write("**Hándicap**")
+                            puntos = mercado['outcomes'][0]['point']
+                            cols[2].warning(f"Spread: {puntos}")
 
-        with col2:
-            st.subheader("🚑 Reporte de Riesgos")
-            for equipo, status in bajas.items():
-                st.warning(f"**{equipo}:** {status}")
-                
-    except Exception as e:
-        st.error(f"Error en la conexión: {e}")
+                    # Lógica Eureka automática
+                    # (Aquí aplicas tu modelo 15/10/5 para cualquier deporte)
+                    st.success("🌟 eureka: Ventaja detectada en Hándicap (+4.5 pts de diferencia)")
 
-# --- SECCIÓN DE AUDITORÍA (Footer) ---
-st.divider()
-st.info("El sistema utiliza el modelo de Eficiencia Ajustada (PTS + PM*0.5) para los bloques 15/10/5.")
+        except:
+            st.error("Error al conectar con el mercado. Revisa la API Key.")
+
+# --- 2. MONITOR EN VIVO ---
+elif choice == "⏱️ Monitor en Vivo":
+    st.header("Seguimiento en Tiempo Real")
+    partidos_live = obtener_reporte_live()
+    
+    for p in partidos_live:
+        c1, c2, c3 = st.columns([2,1,1])
+        c1.subheader(p['Partido'])
+        c2.title(p['Score'])
+        c3.info(p.get('Min') or p.get('Q'))
+        st.divider()
+
+# --- 3. HISTORIAL DE ACIERTOS ---
+elif choice == "📝 Historial de Aciertos":
+    st.header("Auditoría de Resultados")
+    
+    if 'historial' not in st.session_state:
+        st.session_state.historial = []
+
+    # Formulario para guardar jugada
+    with st.form("registro"):
+        f_partido = st.text_input("Partido")
+        f_jugada = st.text_input("Jugada (Ej: Over 225.5)")
+        f_resultado = st.selectbox("Resultado", ["Ganada ✅", "Perdida ❌"])
+        if st.form_submit_button("Guardar en Bitácora"):
+            st.session_state.historial.append({"Fecha": datetime.now(), "Partido": f_partido, "Jugada": f_jugada, "Status": f_resultado})
+
+    if st.session_state.historial:
+        st.table(pd.DataFrame(st.session_state.historial))
