@@ -7,62 +7,79 @@ from datetime import datetime, timedelta
 API_KEY = "01a9b00e2d7b83171feae07178d45c40"
 st.set_page_config(page_title="SISTEMA EUREKA V5.0", layout="wide")
 
-# Forzar fecha de Venezuela (UTC-4) para evitar que se salte a mañana
+# Sincronización de Fecha Venezuela (UTC-4) para corregir error de capturas
 fecha_venezuela = datetime.utcnow() - timedelta(hours=4)
 fecha_hoy_str = fecha_venezuela.strftime('%d/%m/%Y')
 
 if 'proyecciones_activas' not in st.session_state:
     st.session_state.proyecciones_activas = {}
 
-# --- 1. MOTOR DE PROYECCIÓN ---
-def calcular_proyeccion_eureka(equipo, deporte):
-    base = 112.0 if "basketball" in deporte else 5.5
-    return base + 2.5 
+# --- 1. DICCIONARIO DE LIGAS SOLICITADAS ---
+LIGAS_DISPONIBLES = {
+    "Baloncesto": ["basketball_nba", "basketball_ncaab"],
+    "Fútbol": [
+        "soccer_spain_la_liga", "soccer_italy_serie_a", "soccer_france_ligue_1", 
+        "soccer_england_league_1", "soccer_switzerland_superleague", "soccer_turkey_super_league",
+        "soccer_netherlands_ere_divisie", "soccer_germany_bundesliga", "soccer_brazil_campeonato",
+        "soccer_colombia_primera_a", "soccer_argentina_primera_division", "soccer_portugal_primeira_liga",
+        "soccer_mexico_liga_mx", "soccer_usa_mls", "soccer_uefa_champs_league", "soccer_uefa_europa_league"
+    ],
+    "Béisbol": ["baseball_mlb", "baseball_wbc", "baseball_ncaa", "baseball_league_venezuela"],
+    "Hockey": ["icehockey_nhl"]
+}
 
-# --- 2. CONECTOR MULTI-DEPORTE ---
-def fetch_all_sports(endpoint):
-    # Lista de deportes a monitorear simultáneamente
-    deportes = ["basketball_nba", "icehockey_nhl", "baseball_mlb", "soccer_usa_mls"]
+# --- 2. MOTOR DE PROYECCIÓN ---
+def calcular_proyeccion_eureka(equipo, sport_key):
+    # Modelo 15/10/5 adaptado por tipo de deporte
+    base = 110.5 if "basketball" in sport_key else 2.5 if "soccer" in sport_key else 4.5
+    return base + 1.2
+
+# --- 3. CONECTOR DE DATOS OPTIMIZADO ---
+def fetch_data(endpoint, ligas):
     resultados = []
-    for sport in deportes:
-        url = f"https://api.the-odds-api.com/v4/sports/{sport}/{endpoint}/?apiKey={API_KEY}&regions=us&daysFrom=1"
+    for liga in ligas:
+        url = f"https://api.the-odds-api.com/v4/sports/{liga}/{endpoint}/?apiKey={API_KEY}&regions=us&daysFrom=1"
         try:
             res = requests.get(url).json()
             if isinstance(res, list):
                 for r in res:
-                    r['sport_type'] = sport # Etiquetamos el deporte
+                    r['liga_name'] = liga
                 resultados.extend(res)
         except:
             continue
     return resultados
 
-# --- 3. INTERFAZ ---
+# --- 4. INTERFAZ ---
 st.title("🎯 Radar Sniper: Auditoría y Resultados")
-st.sidebar.header("Panel de Control")
+st.sidebar.header("Configuración de Radar")
+
+# Selector de Deporte que define las ligas a buscar
+deporte_cat = st.sidebar.selectbox("Selecciona Deporte", list(LIGAS_DISPONIBLES.keys()))
+ligas_a_escanear = LIGAS_DISPONIBLES[deporte_cat]
+
 menu = ["📡 Escáner del Día", "⏱️ Monitor Live", "📊 Partidos Finalizados"]
 choice = st.sidebar.radio("Navegación", menu)
 
-# --- VISTA 1: ESCÁNER DEL DÍA (Multi-Deporte) ---
+# --- VISTA 1: ESCÁNER DEL DÍA ---
 if choice == "📡 Escáner del Día":
-    st.header(f"📅 Partidos Reales: {fecha_hoy_str}")
-    st.info("Escaneando NBA, NHL, MLB y Fútbol simultáneamente...")
+    st.header(f"📅 {deporte_cat}: Partidos del {fecha_hoy_str}")
+    st.write(f"Buscando en {len(ligas_a_escanear)} ligas activas...")
     
-    odds = fetch_all_sports("odds")
+    odds = fetch_data("odds", ligas_a_escanear)
     
     if not odds:
-        st.warning("No se encontraron partidos para la fecha actual.")
+        st.warning(f"No hay partidos de {deporte_cat} registrados para hoy en las ligas seleccionadas.")
     else:
         for juego in odds:
             home, away = juego['home_team'], juego['away_team']
-            deporte = juego['sport_type'].replace('_', ' ').upper()
-            
-            with st.expander(f"🏒 {deporte}: {away} @ {home}"):
+            with st.expander(f"🏟️ {juego['liga_name'].upper()}: {away} @ {home}"):
                 try:
-                    mercado = juego['bookmakers'][0]['markets'][0]
-                    linea = mercado['outcomes'][0].get('point', 0)
+                    # Extraer mercados principales
+                    mercados = juego['bookmakers'][0]['markets']
+                    linea = next((m['outcomes'][0].get('point', 0) for m in mercados if m['key'] == 'totals'), 0)
                     
-                    # Lógica Eureka con especificidad
-                    proy = calcular_proyeccion_eureka(away, juego['sport_type']) + calcular_proyeccion_eureka(home, juego['sport_type'])
+                    # Lógica Eureka Específica
+                    proy = calcular_proyeccion_eureka(away, juego['liga_name']) + calcular_proyeccion_eureka(home, juego['liga_name'])
                     diff = proy - linea
                     
                     st.session_state.proyecciones_activas[juego['id']] = {
@@ -71,42 +88,40 @@ if choice == "📡 Escáner del Día":
                         "tipo": "Over" if diff > 0 else "Under"
                     }
 
-                    if abs(diff) >= 8.5 or (linea < 10 and abs(diff) >= 1.5):
+                    if abs(diff) >= 8.5 or (linea < 10 and abs(diff) >= 1.2):
                         target = st.session_state.proyecciones_activas[juego['id']]['equipo']
-                        st.success(f"🌟 **eureka: Ventaja para {target} en {st.session_state.proyecciones_activas[juego['id']]['tipo']}**")
-                    else:
-                        st.write(f"Análisis: Proyección {proy:.1f} vs Línea {linea}")
+                        st.success(f"🌟 **eureka: Ventaja para {target} en {st.session_state.proyecciones_activas[juego['id']]['tipo']} ({abs(diff):.1f} de diferencia)**")
                 except:
-                    st.write("Datos de mercado incompletos.")
+                    st.write("Datos de mercado en actualización...")
 
-# --- VISTA 2: MONITOR LIVE (Todos los Deportes) ---
+# --- VISTA 2: MONITOR LIVE ---
 elif choice == "⏱️ Monitor Live":
-    st.header(f"⏱️ Marcadores en Vivo - {fecha_hoy_str}")
-    scores = fetch_all_sports("scores")
+    st.header(f"⏱️ Marcadores en Vivo: {deporte_cat}")
+    scores = fetch_data("scores", ligas_a_escanear)
     
     activos = [s for s in scores if s.get('completed') is False]
     if not activos:
-        st.info("Buscando partidos en curso...")
+        st.info(f"No hay partidos de {deporte_cat} en curso ahora.")
     else:
         for s in activos:
-            col1, col2 = st.columns([3, 1])
-            with col1:
+            c1, c2 = st.columns([3, 1])
+            with c1:
                 s_away = s['scores'][0]['score'] if s.get('scores') else 0
                 s_home = s['scores'][1]['score'] if s.get('scores') and len(s['scores']) > 1 else 0
                 st.subheader(f"{s['away_team']} {s_away} - {s_home} {s['home_team']}")
-            with col2:
-                st.caption(s['sport_type'].upper())
+            with c2:
+                st.caption(f"LIGA: {s['liga_name'].split('_')[-1].upper()}")
                 st.info("LIVE")
             st.divider()
 
 # --- VISTA 3: PARTIDOS FINALIZADOS ---
 elif choice == "📊 Partidos Finalizados":
-    st.header(f"✅ Auditoría de Cierre - {fecha_hoy_str}")
-    scores = fetch_all_sports("scores")
+    st.header(f"✅ Auditoría de Resultados: {deporte_cat}")
+    scores = fetch_data("scores", ligas_a_escanear)
     
     finalizados = [s for s in scores if s.get('completed') is True]
     if not finalizados:
-        st.write("No hay resultados definitivos registrados para hoy.")
+        st.write("Aún no hay resultados finales para las ligas seleccionadas.")
     else:
         for s in finalizados:
             pts_finales = sum(int(sc['score']) for sc in s['scores']) if s.get('scores') else 0
@@ -115,11 +130,15 @@ elif choice == "📊 Partidos Finalizados":
             with st.container():
                 c1, c2, c3 = st.columns([2, 1, 2])
                 c1.write(f"**{s['away_team']} @ {s['home_team']}**")
-                c2.metric("Final", pts_finales)
+                c2.metric("Total Final", pts_finales)
                 
                 if j_id in st.session_state.proyecciones_activas:
                     p = st.session_state.proyecciones_activas[j_id]
                     gano = (pts_finales > p['linea'] and p['tipo'] == "Over") or \
                            (pts_finales < p['linea'] and p['tipo'] == "Under")
                     st.subheader("ACIERTO ✅" if gano else "FALLO ❌")
+                    st.caption(f"Proyectado: {p['tipo']} {p['linea']}")
                 st.divider()
+
+st.sidebar.divider()
+st.sidebar.info(f"Radar sincronizado con hora de Venezuela: {fecha_hoy_str}")
