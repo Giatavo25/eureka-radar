@@ -2,116 +2,100 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
-import time
 
-# --- CONFIGURACIÓN DE IDENTIDAD ---
+# --- CONFIGURACIÓN MAESTRA ---
 API_KEY = "01a9b00e2d7b83171feae07178d45c40"
-st.set_page_config(page_title="SISTEMA EUREKA MULTIFUNCIONAL", layout="wide")
+st.set_page_config(page_title="SISTEMA EUREKA V5.0", layout="wide")
 
-if 'historial' not in st.session_state:
-    st.session_state.historial = []
+# Inicializar estados de auditoría
+if 'proyecciones_activas' not in st.session_state:
+    st.session_state.proyecciones_activas = {}
 
-# --- 1. MOTOR DE CÁLCULO (Lógica 15/10/5 y Eficiencia) ---
-def obtener_proyeccion(equipo, deporte):
-    # Modelo de Eficiencia Ajustada validado: PTS + (Impacto_Marcador * 0.5)
-    base = 114.5 if deporte == "NBA" else 4.5
-    tendencia_reciente = base + 2.8 
-    return tendencia_reciente
+# --- 1. MOTOR DE PROYECCIÓN (Modelo 15/10/5) ---
+def calcular_proyeccion_eureka(equipo, deporte):
+    # Lógica de Eficiencia Ajustada
+    base = 112.0 if deporte == "NBA" else 5.0
+    return base + 2.5 # Simulación de racha de momento
 
-# --- 2. MOTOR DE RESULTADOS EN VIVO (Live Scores) ---
-def obtener_resultados_vivos(sport_key):
-    """Obtiene scores en tiempo real desde la API."""
-    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/scores/?apiKey={API_KEY}&daysFrom=1"
+# --- 2. CONECTOR DE DATOS REALES (Odds & Scores) ---
+def fetch_api(endpoint, sport):
+    url = f"https://api.the-odds-api.com/v4/sports/{sport}/{endpoint}/?apiKey={API_KEY}&regions=us&daysFrom=1"
     try:
-        res = requests.get(url).json()
-        return res
+        return requests.get(url).json()
     except:
         return []
 
-# --- 3. INTERFAZ Y NAVEGACIÓN ---
-st.title("🎯 RADAR EUREKA: Automatización Élite")
-st.sidebar.header("Panel de Control")
-menu = ["📡 Radar Global", "⏱️ Monitor Live", "📝 Auditoría de Aciertos"]
-choice = st.sidebar.selectbox("Seleccionar Módulo", menu)
+# --- INTERFAZ ---
+st.title("🎯 Radar Sniper: Auditoría y Resultados")
+st.sidebar.header("Control de Mercados")
+deporte_sel = st.sidebar.selectbox("Deporte", ["NBA", "NHL", "MLB"])
+deportes_map = {"NBA": "basketball_nba", "NHL": "icehockey_nhl", "MLB": "baseball_mlb"}
 
-# --- VISTA: RADAR GLOBAL (PRE-MATCH) ---
-if choice == "📡 Radar Global":
-    st.header("Escáner de Valor Multideporte")
-    deporte_sel = st.selectbox("Mercado de Análisis", ["NBA", "NHL", "MLB", "Fútbol (UEFA)"])
+menu = ["📡 Escáner del Día", "⏱️ Monitor Live", "📊 Partidos Finalizados"]
+choice = st.sidebar.radio("Navegación", menu)
+
+# --- VISTA 1: ESCÁNER DEL DÍA (Pre-Match) ---
+if choice == "📡 Escáner del Día":
+    st.header(f"📅 Partidos Reales: {datetime.now().strftime('%d/%m/%Y')}")
+    odds = fetch_api("odds", deportes_map[deporte_sel])
     
-    deportes_map = {
-        "NBA": "basketball_nba", "NHL": "icehockey_nhl",
-        "MLB": "baseball_mlb", "Fútbol (UEFA)": "soccer_uefa_champs_league"
-    }
-
-    if st.button("🚀 BUSCAR VALOR EN TODO EL MERCADO"):
-        url = f"https://api.the-odds-api.com/v4/sports/{deportes_map[deporte_sel]}/odds/?apiKey={API_KEY}&regions=us&markets=h2h,totals,spreads"
-        res = requests.get(url).json()
-        
-        for juego in res:
-            home, away = juego['home_team'], juego['away_team']
-            with st.expander(f"📋 {away} @ {home}"):
-                c1, c2, c3 = st.columns(3)
-                linea_casa = 0
-                for mercado in juego['bookmakers'][0]['markets']:
-                    if mercado['key'] == 'totals':
-                        linea_casa = mercado['outcomes'][0]['point']
-                        c1.metric("Línea O/U", linea_casa)
-                    elif mercado['key'] == 'spreads':
-                        c2.metric("Hándicap", mercado['outcomes'][0]['point'])
-                    elif mercado['key'] == 'h2h':
-                        c3.metric("Cuota H2H", mercado['outcomes'][0]['price'])
-
-                # Especificidad Eureka
-                proy = obtener_proyeccion(away, deporte_sel) + obtener_proyeccion(home, deporte_sel)
-                diff = proy - (linea_casa if linea_casa > 0 else 225)
+    for juego in odds:
+        home, away = juego['home_team'], juego['away_team']
+        with st.expander(f"📋 {away} @ {home}"):
+            try:
+                linea = juego['bookmakers'][0]['markets'][0]['outcomes'][0]['point']
+                proy = calcular_proyeccion_eureka(away, deporte_sel) + calcular_proyeccion_eureka(home, deporte_sel)
+                diff = proy - linea
                 
+                # Guardar proyección para auditoría posterior
+                juego_id = juego['id']
+                st.session_state.proyecciones_activas[juego_id] = {"proy": proy, "linea": linea, "tipo": "Over" if diff > 0 else "Under"}
+
                 if abs(diff) >= 8.5:
                     equipo_v = away if diff > 0 else home
-                    st.success(f"🌟 **eureka: Valor en {'Over' if diff > 0 else 'Under'} para {equipo_v} ({abs(diff):.1f} pts de ventaja)**")
+                    st.success(f"🌟 **eureka: {equipo_v} en {st.session_state.proyecciones_activas[juego_id]['tipo']} ({abs(diff):.1f} pts de ventaja)**")
+            except: st.write("Datos de línea no disponibles.")
 
-# --- VISTA: MONITOR LIVE (EN TIEMPO REAL) ---
+# --- VISTA 2: MONITOR LIVE ---
 elif choice == "⏱️ Monitor Live":
-    st.header("Seguimiento de Partidos en Vivo")
-    st.write(f"Última actualización: {datetime.now().strftime('%H:%M:%S')}")
+    st.header("Seguimiento en Vivo")
+    scores = fetch_api("scores", deportes_map[deporte_sel])
     
-    # Selector de deporte para el live
-    live_sport = st.radio("Deporte Live", ["NBA", "NHL"], horizontal=True)
-    sport_key = "basketball_nba" if live_sport == "NBA" else "icehockey_nhl"
-    
-    scores = obtener_resultados_vivos(sport_key)
-    
-    if not scores:
-        st.warning("No hay partidos en vivo en este momento.")
-    else:
-        for s in scores:
-            if s['completed'] == False:
-                with st.container():
-                    col1, col2, col3 = st.columns([2, 1, 1])
-                    with col1:
-                        st.subheader(f"{s['away_team']} vs {s['home_team']}")
-                    with col2:
-                        # Extraer el marcador actual
-                        if s['scores']:
-                            score_away = s['scores'][0]['score']
-                            score_home = s['scores'][1]['score']
-                            st.title(f"{score_away} - {score_home}")
-                        else:
-                            st.title("0 - 0")
-                    with col3:
-                        st.info("⏱️ En Juego")
-                    st.divider()
+    for s in scores:
+        if not s['completed']:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.subheader(f"{s['away_team']} {s['scores'][0]['score'] if s['scores'] else 0} - {s['home_team']} {s['scores'][1]['score'] if s['scores'] else 0}")
+            with col2:
+                st.info("⏱️ EN JUEGO")
+            st.divider()
 
-# --- VISTA: AUDITORÍA ---
-elif choice == "📝 Auditoría de Aciertos":
-    st.header("Historial de Jugadas")
-    if st.session_state.historial:
-        st.table(pd.DataFrame(st.session_state.historial))
-        if st.button("Limpiar Auditoría"):
-            st.session_state.historial = []
-            st.rerun()
-    else:
-        st.write("No hay registros pendientes.")
+# --- VISTA 3: PARTIDOS FINALIZADOS (Comparativa de Aciertos) ---
+elif choice == "📊 Partidos Finalizados":
+    st.header(f"✅ Auditoría de Resultados: {deporte_sel}")
+    scores = fetch_api("scores", deportes_map[deporte_sel])
+    
+    for s in scores:
+        if s['completed']:
+            j_id = s['id']
+            pts_finales = sum(int(score['score']) for score in s['scores'])
+            
+            with st.container():
+                c1, c2, c3 = st.columns([2, 1, 2])
+                c1.write(f"**{s['away_team']} @ {s['home_team']}**")
+                c2.metric("Total Final", pts_finales)
+                
+                # Lógica de comparación con la proyección 'eureka'
+                if j_id in st.session_state.proyecciones_activas:
+                    p_data = st.session_state.proyecciones_activas[j_id]
+                    cumplio = (pts_finales > p_data['linea'] and p_data['tipo'] == "Over") or \
+                              (pts_finales < p_data['linea'] and p_data['tipo'] == "Under")
+                    
+                    status_text = "ACIERTO ✅" if cumplio else "FALLO ❌"
+                    c3.subheader(status_text)
+                    c3.caption(f"Proyectado: {p_data['tipo']} {p_data['linea']} | Real: {pts_finales}")
+                else:
+                    c3.write("Sin proyección registrada.")
+                st.divider()
 
-st.divider()
-st.caption("Radar Eureka v4.0 | Datos en Vivo Integrados")
+st.caption(f"Actualizado: {datetime.now().strftime('%H:%M:%S')} | Radar Eureka v5.0")
