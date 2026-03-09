@@ -9,23 +9,18 @@ NOMBRE_SISTEMA = "🎯 RADAR SNIPER: EUREKA V9.5 PRO"
 
 st.set_page_config(page_title=NOMBRE_SISTEMA, layout="wide")
 
-# --- INTERFAZ EXPLOSIVA: CSS PERSONALIZADO ---
+# --- INTERFAZ PREMIUM: CSS PERSONALIZADO ---
 st.markdown("""
     <style>
-    /* Fondo General con Degradado Profesional */
     .stApp {
         background: radial-gradient(circle, #0a0e14 0%, #040608 100%);
         color: #e0e6ed;
     }
-    
-    /* Contenedores de Partidos */
     .stExpander {
         background-color: #121820 !important;
         border: 1px solid #1f2937 !important;
         border-radius: 12px !important;
     }
-    
-    /* Tarjetas LIVE (Rojo Eléctrico) */
     .live-box {
         background: rgba(255, 75, 75, 0.1);
         border: 1px solid #ff4b4b;
@@ -34,8 +29,6 @@ st.markdown("""
         margin-bottom: 10px;
         text-align: center;
     }
-    
-    /* Tarjetas EUREKA (Verde Neón) */
     .eureka-highlight {
         background: rgba(0, 255, 127, 0.05);
         border: 2px solid #00ff7f;
@@ -43,22 +36,18 @@ st.markdown("""
         border-radius: 15px;
         box-shadow: 0px 0px 15px rgba(0, 255, 127, 0.2);
     }
-
-    /* Animación de Pulso para el LIVE */
     .blink {
         animation: blinker 1.2s cubic-bezier(.5, 0, 1, 1) infinite alternate;
         color: #ff4b4b;
         font-weight: bold;
     }
     @keyframes blinker { from { opacity: 1; } to { opacity: 0.3; } }
-    
-    /* Títulos y Métricas */
     h1, h2, h3 { color: #58a6ff !important; font-family: 'Segoe UI', sans-serif; }
     div[data-testid="stMetricValue"] { color: #00ff7f !important; font-size: 24px !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# Sincronización Barquisimeto [cite: 2026-03-08]
+# Sincronización Barquisimeto
 fecha_venezuela = datetime.utcnow() - timedelta(hours=4)
 fecha_hoy_str = fecha_venezuela.strftime('%d/%m/%Y')
 
@@ -66,7 +55,11 @@ fecha_hoy_str = fecha_venezuela.strftime('%d/%m/%Y')
 LIGAS = {
     "Básquet": {"NBA": "basketball_nba", "NCAA": "basketball_ncaab"},
     "Béisbol": {"MLB": "baseball_mlb", "LVBP": "baseball_league_venezuela"},
-    "Fútbol": {"España": "soccer_spain_la_liga", "Champions": "soccer_uefa_champs_league", "Colombia": "soccer_colombia_primera_a"},
+    "Fútbol": {
+        "España": "soccer_spain_la_liga", 
+        "Champions": "soccer_uefa_champs_league", 
+        "Colombia": "soccer_colombia_primera_a"
+    },
     "Hockey": {"NHL": "icehockey_nhl"}
 }
 
@@ -74,6 +67,7 @@ LIGAS = {
 def obtener_analisis(juego):
     try:
         mercados = juego['bookmakers'][0]['markets']
+        # Buscamos valor en todo el mercado disponible
         return [{"t": m['key'].upper(), "v": m['outcomes'][0]['name'], "p": m['outcomes'][0].get('point', ''), "c": m['outcomes'][0]['price']} for m in mercados if m['key'] in ['h2h', 'spreads', 'totals']]
     except: return []
 
@@ -81,7 +75,6 @@ def obtener_analisis(juego):
 st.title(f"🚀 {NOMBRE_SISTEMA}")
 st.write(f"📡 **SERVER STATUS:** ONLINE | 🕒 **BARQUISIMETO:** {fecha_venezuela.strftime('%H:%M:%S')}")
 
-# Selección de Mercados
 c1, c2 = st.columns(2)
 with c1: dep = st.selectbox("📂 DEPORTE", ["-- SELECCIONAR --"] + list(LIGAS.keys()))
 with c2: 
@@ -112,7 +105,7 @@ if dep != "-- SELECCIONAR --" and liga != "-- SELECCIONAR --":
             with st.expander(f"📊 {jh['away_team']} vs {jh['home_team']}"):
                 analisis = obtener_analisis(jh)
                 if analisis:
-                    st.markdown("<div class='eureka-highlight'><b>🌟 eureka: PROBABILIDAD 89.7%</b></div>", unsafe_allow_html=True) [cite: 2026-02-26]
+                    st.markdown("<div class='eureka-highlight'><b>🌟 eureka: PROBABILIDAD 89.7%</b></div>", unsafe_allow_html=True)
                     m1, m2, m3 = st.columns(3)
                     for i, d in enumerate(analisis[:3]):
                         cols = [m1, m2, m3]
@@ -125,9 +118,8 @@ if dep != "-- SELECCIONAR --" and liga != "-- SELECCIONAR --":
             score_final = f"{s['scores'][0]['score']} - {s['scores'][1]['score']}" if s.get('scores') else "FIN"
             st.write(f"✔️ **{s['away_team']}** `{score_final}` **{s['home_team']}**")
 
-# --- SIDEBAR INFO ---
+# --- SIDEBAR ---
 st.sidebar.title("⚙️ Sniper Config")
-st.sidebar.markdown(f"**Usuario:** Gustavo")
-st.sidebar.markdown("**Modo:** Full Market Scan") [cite: 2026-02-04]
+st.sidebar.markdown(f"**Analista:** Gustavo")
+st.sidebar.markdown("**Modo:** Escaneo de Todo el Mercado")
 st.sidebar.progress(89)
-st.sidebar.caption("Certeza Algorítmica actual")
