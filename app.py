@@ -134,6 +134,8 @@ def fetch_api_blindado(l_id, tipo_endpoint):
 
 # --- LIGAS ---
 LIGAS = {
+    "🏆 Torneos Continentales": {
+        "Champions League": "soccer_uefa_champs_league", "Europa League": "soccer_uefa_europa_league"
     "⚽ Fútbol Europa": {"España": "soccer_spain_la_liga", "Italia": "soccer_italy_serie_a", "Inglaterra": "soccer_england_league_one", "Alemania": "soccer_germany_bundesliga"},
     "⚽ Fútbol América": {"Brasil": "soccer_brazil_campeonato", "Colombia": "soccer_colombia_primera_a", "Argentina": "soccer_argentina_primera_division", "México": "soccer_mexico_liga_mx", "USA": "soccer_usa_mls"},
     "🏀 Básquet": {"NBA": "basketball_nba", "NCAA": "basketball_ncaab"},
