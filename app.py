@@ -11,8 +11,13 @@ KEYS = [
     "cdaae98920c7cd3383f7f70fe9fed71c"
 ]
 
-NOMBRE_SISTEMA = "🎯 RADAR SNIPER: EUREKA V28.0 TOTAL"
+NOMBRE_SISTEMA = "🎯 RADAR SNIPER: EUREKA V30.0"
 st.set_page_config(page_title=NOMBRE_SISTEMA, layout="wide")
+
+# --- [NUEVO] BÓVEDA DE PERSISTENCIA ANTI-GASTO ---
+# Esto asegura que los datos NO se borren al tocar botones o refrescar
+if 'cache_maestro' not in st.session_state:
+    st.session_state.cache_maestro = {}
 
 # --- MOTOR DE GENERACIÓN DE DATOS DINÁMICOS POR EQUIPO ---
 def obtener_analisis_equipo(nombre_equipo, liga_id):
@@ -34,42 +39,36 @@ def obtener_analisis_equipo(nombre_equipo, liga_id):
 # --- CEREBRO MULTIMERCADO: ESCANEA VALOR EN CUALQUIER JUGADA ---
 def analizar_mercados_eureka(j, s_h, s_a, liga_id):
     eurekas_encontrados = []
-    
-    # Pesos de Gustavo: 50% Reciente, 30% Media, 20% Histórica
     rend_h = ((s_h['p15']*0.2) + (s_h['p10']*0.3) + (s_h['p5']*0.5)) * s_h['sos']
     rend_a = ((s_a['p15']*0.2) + (s_a['p10']*0.3) + (s_a['p5']*0.5)) * s_a['sos']
     
     for market in j['bookmakers'][0]['markets']:
-        # 1. Análisis de TOTALES (Altas/Bajas)
         if market['key'] == 'totals':
             linea_casa = market['outcomes'][0]['point']
             proy_total = round(rend_h + rend_a, 2)
             diff = abs(proy_total - linea_casa)
             conf = 85 + (min(diff, 10) * 2)
-            if conf >= 88:
+            if conf >= 85: # Ajustado a tu regla de Eureka
                 eurekas_encontrados.append({
                     'tipo': "TOTAL (Altas/Bajas)",
                     'jugada': "ALTAS" if proy_total > linea_casa else "BAJAS",
                     'casa': linea_casa, 'sistema': proy_total, 'conf': round(min(conf, 99.5), 2)
                 })
-
-        # 2. Análisis de HÁNDICAP (Spreads)
         elif market['key'] == 'spreads':
             linea_casa = market['outcomes'][0]['point']
             equipo_fav = market['outcomes'][0]['name']
             proy_diff = round(rend_h - rend_a, 2) if equipo_fav == j['home_team'] else round(rend_a - rend_h, 2)
             diff_spread = abs(proy_diff - linea_casa)
             conf = 87 + (min(diff_spread, 5) * 2.5)
-            if conf >= 90:
+            if conf >= 85:
                 eurekas_encontrados.append({
                     'tipo': f"HÁNDICAP ({equipo_fav})",
                     'jugada': f"Línea {linea_casa}",
                     'casa': linea_casa, 'sistema': proy_diff, 'conf': round(min(conf, 99.5), 2)
                 })
-
     return eurekas_encontrados
 
-# --- ESTILO PREMIUM (Mantenido) ---
+# --- ESTILO PREMIUM ---
 st.markdown("""
     <style>
     .stApp { background: radial-gradient(circle, #0a1118 0%, #05080a 100%); color: #e0e6ed; }
@@ -80,24 +79,34 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Sincronización y Blindaje de Créditos (TTL hasta medianoche)
 ahora = datetime.utcnow() - timedelta(hours=4)
 hoy_str = ahora.strftime('%Y-%m-%d')
-segundos_para_expirar = int((datetime.combine(ahora.date() + timedelta(days=1), datetime.min.time()) - ahora).total_seconds())
 
-@st.cache_data(ttl=segundos_para_expirar)
-def fetch_api_data(url_template, liga_id, dia):
+# --- [NUEVA] FUNCIÓN DE LLAMADA CON BLINDAJE NIVEL 10 ---
+def fetch_api_blindado(l_id, tipo_endpoint):
+    clave_memoria = f"{l_id}_{tipo_endpoint}_{hoy_str}"
+    
+    # Si ya está en la bóveda de sesión, lo devolvemos sin gastar nada
+    if clave_memoria in st.session_state.cache_maestro:
+        return st.session_state.cache_maestro[clave_memoria], "MEMORIA-LOCK", "🛡️"
+
+    # Si no, procedemos a la API
+    u_base = "odds" if tipo_endpoint == "odds" else "scores"
+    m_extra = "&markets=h2h,spreads,totals" if tipo_endpoint == "odds" else "&daysFrom=1"
+    
     for i, key in enumerate(KEYS):
-        url = url_template.replace("API_KEY_HERE", key)
+        url = f"https://api.the-odds-api.com/v4/sports/{l_id}/{u_base}/?apiKey={key}&regions=us{m_extra}"
         try:
             res = requests.get(url)
             if res.status_code == 200:
                 data = res.json()
+                # Guardamos en la bóveda para el resto del día
+                st.session_state.cache_maestro[clave_memoria] = data
                 return data, res.headers.get('x-requests-remaining', '0'), i + 1
         except: continue
     return None, 0, 0
 
-# --- LIGAS (Mantengo tu lista original completa) ---
+# --- LIGAS (Tu lista completa) ---
 LIGAS = {
     "⚽ Fútbol Europa": {
         "España (La Liga)": "soccer_spain_la_liga", "Italia (Serie A)": "soccer_italy_serie_a",
@@ -120,7 +129,7 @@ LIGAS = {
 }
 
 st.title(f"🚀 {NOMBRE_SISTEMA}")
-st.caption(f"🛡️ Blindaje 24h Activo | 📍 Barquisimeto: {ahora.strftime('%H:%M:%S')}")
+st.caption(f"🛡️ Blindaje de Créditos Nivel 10 Activo | 📍 Barquisimeto: {ahora.strftime('%H:%M:%S')}")
 
 c1, c2 = st.columns(2)
 with c1: cat_sel = st.selectbox("📂 CATEGORÍA", ["-- Elegir --"] + list(LIGAS.keys()))
@@ -130,33 +139,28 @@ with c2:
 if cat_sel != "-- Elegir --" and liga_sel != "-- Elegir --":
     if st.button(f"⚡ INICIAR ESCANEO MULTIMERCADO"):
         l_id = LIGAS[cat_sel][liga_sel]
-        u_odds = f"https://api.the-odds-api.com/v4/sports/{l_id}/odds/?apiKey=API_KEY_HERE&regions=us&markets=h2h,spreads,totals"
-        u_scores = f"https://api.the-odds-api.com/v4/sports/{l_id}/scores/?apiKey=API_KEY_HERE&daysFrom=1"
         
-        odds, creds, core = fetch_api_data(u_odds, l_id, hoy_str)
-        scores, _, _ = fetch_api_data(u_scores, l_id, hoy_str)
+        # Uso de la nueva función blindada
+        odds, creds, core = fetch_api_blindado(l_id, "odds")
+        scores, _, _ = fetch_api_blindado(l_id, "scores")
 
         st.sidebar.metric("Créditos API", creds)
-        st.sidebar.write(f"📡 Core Activo: {core}")
+        st.sidebar.write(f"📡 Fuente: {core}")
 
         if odds and scores:
             st.divider()
-            
-            # 1. MONITOR LIVE (CON MARCADORES REALES)
             st.subheader("🔴 MONITOR EN VIVO")
             vivos = [s for s in scores if not s.get('completed') and s.get('scores')]
             for v in vivos:
                 pts = {i['name']: i['score'] for i in v['scores']}
                 st.markdown(f"<div class='live-card'><span class='blink'>● LIVE</span> | <b>{v['away_team']} {pts.get(v['away_team'],0)} - {pts.get(v['home_team'],0)} {v['home_team']}</b></div>", unsafe_allow_html=True)
 
-            # 2. ESCANEO GLOBAL DE EUREKAS
             st.subheader("💎 DETECCIONES EUREKA (VALOR REAL)")
             juegos_hoy = [j for j in odds if (datetime.strptime(j['commence_time'], '%Y-%m-%dT%H:%M:%SZ') - timedelta(hours=4)).date() == ahora.date()]
             
             for j in juegos_hoy:
                 s_h = obtener_analisis_equipo(j['home_team'], l_id)
                 s_a = obtener_analisis_equipo(j['away_team'], l_id)
-                
                 hallazgos = analizar_mercados_eureka(j, s_h, s_a, l_id)
                 
                 if hallazgos:
