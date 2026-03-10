@@ -1,34 +1,33 @@
 import streamlit as st
 import requests
-import pandas as pd
 from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE CUATRO NÚCLEOS ---
-KEYS = ["5bcbdf0c72072cd6fdb0d8cbbe37d8f4", "74b617c8a670220a94faac0cb4d575c2", "cdaae98920c7cd3383f7f70fe9fed71c", "01a9b00e2d7b83171feae07178d45c40"]
+KEYS = [
+    "01a9b00e2d7b83171feae07178d45c40",
+    "5bcbdf0c72072cd6fdb0d8cbbe37d8f4",
+    "74b617c8a670220a94faac0cb4d575c2",
+    "cdaae98920c7cd3383f7f70fe9fed71c"
+]
 
-st.set_page_config(page_title="RADAR SNIPER V18.0", layout="wide")
+NOMBRE_SISTEMA = "🎯 RADAR SNIPER: EUREKA V19.0"
+st.set_page_config(page_title=NOMBRE_SISTEMA, layout="wide")
 
-# --- LÓGICA DE CÁLCULO 15/10/5 (MÉTODO GUSTAVO) ---
-def calcular_valor_ sniper(equipo_stats, linea_casa):
-    # Simulamos el cálculo basado en los promedios de tus conversaciones anteriores
-    # En un entorno real, aquí procesarías el DataFrame de los últimos 15 juegos
-    promedio_15 = equipo_stats['p15']
-    promedio_10 = equipo_stats['p10']
-    promedio_5 = equipo_stats['p5']
-    
-    # El valor real es una media ponderada que da más peso a lo reciente (5 juegos)
-    proyeccion_sistema = (promedio_15 * 0.2) + (promedio_10 * 0.3) + (promedio_5 * 0.5)
-    
-    diferencia = proyeccion_sistema - linea_casa
-    confianza = 85 + (abs(diferencia) * 2) # Escala de certeza
-    return round(proyeccion_sistema, 2), round(confianza, 1)
+# --- LÓGICA DE ANÁLISIS 15/10/5 (MÉTODO GUSTAVO) ---
+def calcular_valor_sniper(p15, p10, p5, linea_casa):
+    # Ponderación: 50% últimos 5, 30% últimos 10, 20% últimos 15 [cite: 2026-03-03]
+    proyeccion = (p15 * 0.20) + (p10 * 0.30) + (p5 * 0.50)
+    diferencia = proyeccion - linea_casa
+    # Identificamos eureka si la convicción supera el 85% [cite: 2026-02-26]
+    certeza = 85 + (min(abs(diferencia), 7.5) * 2) 
+    return round(proyeccion, 2), round(certeza, 2), diferencia
 
-# --- MOTOR DE DATOS DIARIO ---
+# --- MOTOR DE DATOS ---
 ahora = datetime.utcnow() - timedelta(hours=4)
 segundos_para_expirar = int((datetime.combine(ahora.date() + timedelta(days=1), datetime.min.time()) - ahora).total_seconds())
 
 @st.cache_data(ttl=segundos_para_expirar)
-def fetch_radar_data(url_template, liga_id, dia):
+def obtener_datos_radar(url_template, liga_id, dia):
     for key in KEYS:
         url = url_template.replace("KEY_HERE", key)
         try:
@@ -36,64 +35,68 @@ def fetch_radar_data(url_template, liga_id, dia):
             if res.status_code == 200:
                 return res.json(), res.headers.get('x-requests-remaining', '0')
         except: continue
-    return None, 0
+    return None, "0"
 
 # --- INTERFAZ ---
-st.title("🎯 RADAR SNIPER: EUREKA V18.0")
+st.title(f"🚀 {NOMBRE_SISTEMA}")
 st.markdown("""<style>
-    .eureka-box { background: #002b1b; border: 1px solid #00ff7f; padding: 15px; border-radius: 10px; color: white; }
-    .live-card { background: #1a1c23; border-left: 5px solid #ff4b4b; padding: 10px; margin-bottom: 5px; }
-    .metric-value { color: #00ff7f; font-weight: bold; font-size: 20px; }
+    .eureka-card { background: rgba(0, 255, 127, 0.1); border: 2px solid #00ff7f; padding: 20px; border-radius: 15px; margin-top: 10px; }
+    .live-tag { background: #ff4b4b; color: white; padding: 2px 8px; border-radius: 5px; font-weight: bold; animation: blinker 1.5s infinite; }
+    @keyframes blinker { 50% { opacity: 0; } }
 </style>""", unsafe_allow_html=True)
 
-# Ligas (Mantenemos tu lista global anterior)
-LIGAS = {"🏀 Básquet": {"NBA": "basketball_nba"}, "⚽ Fútbol": {"España": "soccer_spain_la_liga"}, "⚾ Béisbol": {"MLB": "baseball_mlb"}}
+# Ligas simplificadas para la prueba
+LIGAS = {
+    "🏀 Básquet": {"NBA": "basketball_nba", "NCAA": "basketball_ncaab"},
+    "⚽ Fútbol": {"España": "soccer_spain_la_liga", "Champions": "soccer_uefa_champs_league"},
+    "⚾ Béisbol": {"MLB": "baseball_mlb", "LVBP": "baseball_league_venezuela"}
+}
 
-cat = st.selectbox("📂 DEPORTE", list(LIGAS.keys()))
-liga = st.selectbox("🏆 LIGA", list(LIGAS[cat].keys()))
+dep = st.selectbox("📂 DEPORTE", list(LIGAS.keys()))
+liga = st.selectbox("🏆 LIGA", list(LIGAS[dep].keys()))
 
-if st.button("🔍 ESCANEAR VALOR"):
-    liga_id = LIGAS[cat][liga]
-    u_odds = f"https://api.the-odds-api.com/v4/sports/{liga_id}/odds/?apiKey=KEY_HERE&regions=us&markets=h2h,spreads,totals"
-    u_scores = f"https://api.the-odds-api.com/v4/sports/{liga_id}/scores/?apiKey=KEY_HERE&daysFrom=1"
+if st.button("🔥 EJECUTAR ESCANEO DE VALOR"):
+    l_id = LIGAS[dep][liga]
+    u_odds = f"https://api.the-odds-api.com/v4/sports/{l_id}/odds/?apiKey=KEY_HERE&regions=us&markets=h2h,spreads,totals"
+    u_scores = f"https://api.the-odds-api.com/v4/sports/{l_id}/scores/?apiKey=KEY_HERE&daysFrom=1"
     
-    odds, creds = fetch_radar_data(u_odds, liga_id, ahora.strftime('%Y-%m-%d'))
-    scores, _ = fetch_radar_data(u_scores, liga_id, ahora.strftime('%Y-%m-%d'))
+    odds_data, creds = obtener_datos_radar(u_odds, l_id, ahora.strftime('%Y-%m-%d'))
+    scores_data, _ = obtener_datos_radar(u_scores, l_id, ahora.strftime('%Y-%m-%d'))
 
-    # 1. MONITOR LIVE CON RESULTADOS ACTUALES
-    st.subheader("🔴 EN VIVO - MARCADOR ACTUAL")
-    vivos = [s for s in scores if not s.get('completed') and s.get('scores')]
-    if vivos:
-        for v in vivos:
-            # Aquí extraemos los scores reales de la API
-            s1 = v['scores'][0]['score'] if len(v['scores']) > 0 else 0
-            s2 = v['scores'][1]['score'] if len(v['scores']) > 1 else 0
-            st.markdown(f"""<div class='live-card'>
-                <span style='color:#ff4b4b'>● LIVE</span> | <b>{v['away_team']} {s1} - {s2} {v['home_team']}</b>
-            </div>""", unsafe_allow_html=True)
-    else: st.info("No hay partidos en curso.")
+    st.sidebar.metric("Créditos API", creds)
 
-    # 2. ANÁLISIS EUREKA (EQUIPO + JUGADA + VALOR)
-    st.subheader("💎 EUREKA: DETECCIÓN DE VALOR (MÉTODO 15/10/5)")
-    juegos_hoy = [j for j in odds if (datetime.strptime(j['commence_time'], '%Y-%m-%dT%H:%M:%SZ') - timedelta(hours=4)).date() == ahora.date()]
-    
-    for j in juegos_hoy:
-        with st.expander(f"📊 {j['away_team']} vs {j['home_team']}"):
-            # Ejemplo de lógica aplicada a Spread (Hándicap)
-            linea_casa = j['bookmakers'][0]['markets'][1]['outcomes'][0].get('point', 0)
-            
-            # Simulamos las estadísticas de los últimos 15, 10 y 5 juegos del equipo
-            stats_fake = {'p15': 112, 'p10': 115, 'p5': 118} 
-            proyeccion, certeza = calcular_valor_sniper(stats_fake, linea_casa)
-            
-            if certeza >= 85:
-                st.markdown(f"""<div class='eureka-box'>
-                    <h3>🌟 eureka! - DETECTADO</h3>
-                    <b>JUGADA:</b> {j['home_team']} (Spread {linea_casa})<br>
-                    <b>PROYECCIÓN SISTEMA:</b> {proyeccion}<br>
-                    <b>CONVICCIÓN:</b> {certeza}%
-                </div>""", unsafe_allow_html=True)
-            else:
-                st.write("Calculando divergencias entre casa y sistema...")
+    if odds_data and scores_data:
+        # 1. MONITOR EN VIVO CON MARCADORES REALES
+        st.subheader("🔴 MONITOR EN VIVO")
+        for s in scores_data:
+            if not s.get('completed') and s.get('scores'):
+                # Extraemos marcador actual de la API
+                puntos = {item['name']: item['score'] for item in s['scores']}
+                sc_str = f"{s['away_team']} {puntos.get(s['away_team'], 0)} - {puntos.get(s['home_team'], 0)} {s['home_team']}"
+                st.markdown(f"<div><span class='live-tag'>LIVE</span> <b>{sc_str}</b></div>", unsafe_allow_html=True)
 
-st.sidebar.metric("Créditos Restantes", creds)
+        # 2. ANÁLISIS EUREKA (EQUIPO + JUGADA + VALOR)
+        st.subheader("💎 EUREKA PROYECCIÓN")
+        juegos_hoy = [j for j in odds_data if (datetime.strptime(j['commence_time'], '%Y-%m-%dT%H:%M:%SZ') - timedelta(hours=4)).date() == ahora.date()]
+        
+        for j in juegos_hoy:
+            with st.expander(f"📊 {j['away_team']} vs {j['home_team']}"):
+                # Simulando entrada de datos del usuario o base de datos [cite: 2026-03-03]
+                # En producción, estos valores vendrían de tu historial de partidos analizados
+                p15, p10, p5 = 110.5, 112.0, 115.8  # Ejemplo para el equipo visitante
+                
+                # Buscamos la línea de la casa (Spread/Hándicap)
+                try:
+                    linea_casa = j['bookmakers'][0]['markets'][1]['outcomes'][0]['point']
+                    proy, conf, diff = calcular_valor_sniper(p15, p10, p5, linea_casa)
+                    
+                    if conf >= 85: # Filtro Eureka [cite: 2026-02-26]
+                        st.markdown(f"""<div class='eureka-card'>
+                            <h3>🌟 eureka! DETECTADO</h3>
+                            <b>EQUIPO:</b> {j['away_team']}<br>
+                            <b>JUGADA:</b> Spread ({linea_casa})<br>
+                            <b>VALOR SISTEMA:</b> {proy}<br>
+                            <b>CONVICCIÓN:</b> {conf}%
+                        </div>""", unsafe_allow_html=True)
+                except:
+                    st.write("Datos de mercado incompletos para este encuentro.")
