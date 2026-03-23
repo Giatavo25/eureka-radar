@@ -12,25 +12,29 @@ BOVEDA_ANALISIS = "boveda_analisis_profundo.json"
 
 st.set_page_config(page_title="RADAR SNIPER: EUREKA V4.1", layout="wide")
 
-# --- SISTEMA DE PERSISTENCIA ANTI-ERRORES (BLINDAJE DE KEYERROR) ---
+# --- SISTEMA DE PERSISTENCIA ANTI-ERRORES ---
 def cargar_json_seguro(nombre_archivo):
     ahora = datetime.utcnow() - timedelta(hours=4)
     hoy = ahora.strftime('%Y-%m-%d')
-    plantilla = {"fecha": hoy, "datos": {}} # Estructura base siempre presente
+    plantilla = {"fecha": hoy, "datos": {}}
     
     if os.path.exists(nombre_archivo):
         try:
             with open(nombre_archivo, "r") as f:
                 data = json.load(f)
-                # Si es de hoy y tiene la estructura correcta, se usa
-                if data.get("fecha") == hoy and "datos" in data:
+                # Validación estructural profunda
+                if isinstance(data, dict) and data.get("fecha") == hoy and "datos" in data:
                     return data
-        except: pass
+        except Exception:
+            pass 
     return plantilla
 
 def guardar_json(nombre_archivo, data):
-    with open(nombre_archivo, "w") as f:
-        json.dump(data, f, indent=4)
+    try:
+        with open(nombre_archivo, "w") as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        st.error(f"Error crítico al guardar en bóveda: {e}")
 
 # Inicialización robusta de sesión
 if 'boveda_api' not in st.session_state:
@@ -60,7 +64,12 @@ def calcular_eureka_completo(p_h, era_h, p_a, era_a, team_h, team_a, avg_h, avg_
 
 # --- LÓGICA DE API CON AHORRO ---
 def ejecutar_radar(l_id):
+    # Asegurar que la estructura existe en memoria antes de consultar
+    if "datos" not in st.session_state.boveda_api:
+        st.session_state.boveda_api["datos"] = {}
+        
     boveda = st.session_state.boveda_api
+    
     if l_id in boveda["datos"]: 
         return boveda["datos"][l_id], "BÓVEDA RECUPERADA (0 CRÉDITOS)"
     
@@ -73,12 +82,14 @@ def ejecutar_radar(l_id):
                 boveda["datos"][l_id] = data
                 guardar_json(BOVEDA_API, boveda)
                 return data, "NUEVA CONSULTA API EXITOSA"
-        except: continue
-    return None, "ERROR: TODAS LAS API KEYS AGOTADAS"
+        except Exception:
+            continue
+    return None, "ERROR: TODAS LAS API KEYS AGOTADAS O LIGA NO DISPONIBLE"
 
 # --- INTERFAZ ---
 st.title("🎯 RADAR SNIPER: EUREKA V4.1")
-st.caption(f"📍 Bóveda: {st.session_state.boveda_api['fecha']} | Blindaje de Créditos: ACTIVO")
+fecha_actual = st.session_state.boveda_api.get('fecha', 'Desconocida')
+st.caption(f"📍 Bóveda: {fecha_actual} | Blindaje de Créditos: ACTIVO")
 
 LIGAS = {
     "⚾ Béisbol": {
@@ -109,70 +120,78 @@ tab1, tab2 = st.tabs(["🔬 Nuevo Análisis Élite", "📂 Bóveda de Análisis 
 
 with tab1:
     l_id = LIGAS[deporte][liga]
-    # Validación segura para evitar KeyError
-    if l_id in st.session_state.boveda_api.get("datos", {}):
-        juegos = st.session_state.boveda_api["datos"][l_id]
-        hoy_str = st.session_state.boveda_api['fecha']
-        opciones = [f"{j['away_team']} @ {j['home_team']}" for j in juegos if j['commence_time'][:10] == hoy_str]
+    # Validación segura para evitar KeyError en el acceso a la API
+    boveda_datos = st.session_state.boveda_api.get("datos", {})
+    
+    if l_id in boveda_datos:
+        juegos = boveda_datos[l_id]
+        hoy_str = st.session_state.boveda_api.get('fecha')
+        
+        # Filtro de juegos para el día de hoy
+        opciones = [f"{j['away_team']} @ {j['home_team']}" for j in juegos if j.get('commence_time', '')[:10] == hoy_str]
         
         if not opciones:
-            st.warning("No hay juegos programados para hoy en esta liga.")
+            st.warning(f"No hay juegos programados para hoy en {liga} según la última sincronización.")
         else:
             j_sel = st.selectbox("Seleccione partido:", opciones)
             if j_sel:
                 j_data = next(item for item in juegos if f"{item['away_team']} @ {item['home_team']}" == j_sel)
                 linea_casa = 9.0
                 try:
-                    for m in j_data['bookmakers'][0]['markets']:
+                    for m in j_data.get('bookmakers', [])[0].get('markets', []):
                         if m['key'] == 'totals': linea_casa = m['outcomes'][0]['point']
-                except: pass
+                except (IndexError, KeyError): pass
 
                 a_team, h_team = j_sel.split(" @ ")
-                st.info(f"Línea de Carreras en la Casa: {linea_casa}")
+                st.info(f"Línea de Carreras/Puntos en la Casa: {linea_casa}")
                 
                 col_a, col_h = st.columns(2)
                 with col_a:
                     st.subheader(f"Visitante: {a_team}")
                     p_a = st.text_input(f"Lanzador {a_team}", "Starter A")
-                    era_a = st.number_input(f"ERA de {p_a}", 0.0, 10.0, 4.0)
-                    avg_a = st.number_input(f"AVG {a_team}", .000, .400, .250, format="%.3f")
+                    era_a = st.number_input(f"ERA/Defensa {a_team}", 0.0, 10.0, 4.0)
+                    avg_a = st.number_input(f"AVG/Ataque {a_team}", .000, .400, .250, format="%.3f")
                 with col_h:
                     st.subheader(f"Local: {h_team}")
                     p_h = st.text_input(f"Lanzador {h_team}", "Starter B")
-                    era_h = st.number_input(f"ERA de {p_h}", 0.0, 10.0, 4.0)
-                    avg_h = st.number_input(f"AVG {h_team}", .000, .400, .250, format="%.3f")
+                    era_h = st.number_input(f"ERA/Defensa {h_team}", 0.0, 10.0, 4.0)
+                    avg_h = st.number_input(f"AVG/Ataque {h_team}", .000, .400, .250, format="%.3f")
 
                 if st.button("💎 GENERAR Y GUARDAR EUREKA"):
                     res = calcular_eureka_completo(p_h, era_h, p_a, era_a, h_team, a_team, avg_h, avg_a, linea_casa)
                     id_a = hashlib.md5(f"{j_sel}{hoy_str}".encode()).hexdigest()
                     
+                    # Asegurar que 'datos' existe en la bóveda de análisis
+                    if "datos" not in st.session_state.boveda_pro:
+                        st.session_state.boveda_pro["datos"] = {}
+                        
                     st.session_state.boveda_pro["datos"][id_a] = {
                         "juego": j_sel,
                         "pitchers": f"{p_a} vs {p_h}",
                         "veredicto": res
                     }
                     guardar_json(BOVEDA_ANALISIS, st.session_state.boveda_pro)
-                    st.success("Análisis guardado permanentemente.")
+                    st.success("¡EUREKA! Análisis guardado permanentemente.")
                     st.json(res)
     else:
-        st.info("Sincroniza la liga arriba para cargar los juegos.")
+        st.info("⚠️ La liga seleccionada no tiene datos en memoria. Haz clic en 'SINCRONIZAR' arriba.")
 
 with tab2:
-    # Acción de borrado integrada
     analisis_hoy = st.session_state.boveda_pro.get("datos", {})
     if analisis_hoy:
         for aid, info in list(analisis_hoy.items()):
             c_info, c_del = st.columns([0.85, 0.15])
             with c_info:
                 with st.expander(f"✅ {info['juego']} - Ver Detalle"):
-                    v = info['veredicto']
-                    st.write(f"**Lanzadores:** {info['pitchers']}")
-                    st.metric("Ganador", v['ganador'], f"{v['conf_win']}%")
-                    st.metric("Total", v['total_tipo'], f"{v['conf_total']}% (Proyectado: {v['total_proy']})")
+                    v = info.get('veredicto', {})
+                    st.write(f"**Lanzadores/Claves:** {info.get('pitchers', 'N/A')}")
+                    st.metric("Ganador Proyectado", v.get('ganador'), f"{v.get('conf_win')}%")
+                    st.metric("Tipo de Jugada", v.get('total_tipo'), f"{v.get('conf_total')}% (Proy: {v.get('total_proy')})")
             with c_del:
                 if st.button("🗑️", key=f"del_{aid}"):
-                    del st.session_state.boveda_pro["datos"][aid]
-                    guardar_json(BOVEDA_ANALISIS, st.session_state.boveda_pro)
-                    st.rerun()
+                    if aid in st.session_state.boveda_pro["datos"]:
+                        del st.session_state.boveda_pro["datos"][aid]
+                        guardar_json(BOVEDA_ANALISIS, st.session_state.boveda_pro)
+                        st.rerun()
     else:
-        st.write("Bóveda de análisis vacía.")
+        st.write("La Bóveda de análisis está vacía.")
