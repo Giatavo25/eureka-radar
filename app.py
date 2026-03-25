@@ -52,20 +52,16 @@ if 'stats_db' not in st.session_state: st.session_state.stats_db = cargar_json_s
 
 # --- MOTORES AVANZADOS V7.0 ---
 def motor_beisbol_v7(h, a):
-    # Pitcheo (Menor es mejor)
     f_h = (h['era'] * 0.35) + (h['whip'] * 1.6) - (h['k'] / 100)
     f_a = (a['era'] * 0.35) + (a['whip'] * 1.6) - (a['k'] / 100)
-    # Bateo (Mayor es mejor)
     p_h = (h['ops'] * 6) + (h['avg'] * 12) + (h['war'] * 0.4)
     p_a = (a['ops'] * 6) + (a['avg'] * 12) + (a['war'] * 0.4)
-    
-    sh = p_h / f_a
-    sa = p_a / f_h
+    sh = p_h / (f_a if f_a > 0 else 1)
+    sa = p_a / (f_h if f_h > 0 else 1)
     return sh, sa, (sh + sa) * 0.88
 
 def motor_basquet_v7(h, a):
     ritmo = (h['pace'] + a['pace']) / 2
-    # Eficiencia ajustada por True Shooting
     sh = ((h['off'] + a['def']) / 2) * (ritmo / 100) * (h['ts'] * 1.5)
     sa = ((a['off'] + h['def']) / 2) * (ritmo / 100) * (a['ts'] * 1.5)
     return sh, sa, (sh + sa)
@@ -130,40 +126,40 @@ with tab1:
         st.subheader(f"🚀 {a_team}")
         ref_a = st.text_input("ID Ref.", key="ref_a").upper()
         if "Béisbol" in deporte:
-            db_a = st.session_state.stats_db.get(ref_a, {"era":4.0, "whip":1.2, "k":8.0, "avg":0.250, "ops":0.750, "war":1.5})
+            db_a = st.session_state.stats_db.get(ref_a, {})
             c1, c2, c3 = st.columns(3)
-            era_a = c1.number_input("ERA", 0.0, 15.0, float(db_a['era']), key="eraa")
-            whip_a = c2.number_input("WHIP", 0.0, 3.0, float(db_a['whip']), key="wha")
-            k_a = c3.number_input("K/9", 0.0, 20.0, float(db_a['k']), key="ka")
+            era_a = c1.number_input("ERA", 0.0, 15.0, float(db_a.get('era', 4.0)), key="eraa")
+            whip_a = c2.number_input("WHIP", 0.0, 3.0, float(db_a.get('whip', 1.2)), key="wha")
+            k_a = c3.number_input("K/9", 0.0, 20.0, float(db_a.get('k', 8.0)), key="ka")
             c4, c5, c6 = st.columns(3)
-            avg_a = c4.number_input("AVG", 0.0, 0.400, float(db_a['avg']), format="%.3f", key="avga")
-            ops_a = c5.number_input("OPS", 0.0, 1.200, float(db_a['ops']), format="%.3f", key="opsa")
-            war_a = c6.number_input("WAR", -2.0, 10.0, float(db_a['war']), key="wara")
+            avg_a = c4.number_input("AVG", 0.0, 0.400, float(db_a.get('avg', 0.250)), format="%.3f", key="avga")
+            ops_a = c5.number_input("OPS", 0.0, 1.200, float(db_a.get('ops', 0.750)), format="%.3f", key="opsa")
+            war_a = c6.number_input("WAR", -2.0, 10.0, float(db_a.get('war', 1.5)), key="wara")
             stats_a = {"era":era_a, "whip":whip_a, "k":k_a, "avg":avg_a, "ops":ops_a, "war":war_a}
         else:
-            db_a = st.session_state.stats_db.get(ref_a, {"off":110.0, "def":110.0, "pace":100.0, "ts":0.570})
-            c1, c2 = st.columns(2); off_a = c1.number_input("Off Rtg", 90.0, 140.0, float(db_a['off']), key="offa"); def_a = c2.number_input("Def Rtg", 90.0, 140.0, float(db_a['def']), key="defa")
-            c3, c4 = st.columns(2); pace_a = c3.number_input("Pace", 80.0, 125.0, float(db_a['pace']), key="paca"); ts_a = c4.number_input("TS%", 0.4, 0.7, float(db_a['ts']), format="%.3f", key="tsa")
+            db_a = st.session_state.stats_db.get(ref_a, {})
+            c1, c2 = st.columns(2); off_a = c1.number_input("Off Rtg", 90.0, 140.0, float(db_a.get('off', 110.0)), key="offa"); def_a = c2.number_input("Def Rtg", 90.0, 140.0, float(db_a.get('def', 110.0)), key="defa")
+            c3, c4 = st.columns(2); pace_a = c3.number_input("Pace", 80.0, 125.0, float(db_a.get('pace', 100.0)), key="paca"); ts_a = c4.number_input("TS%", 0.4, 0.7, float(db_a.get('ts', 0.570)), format="%.3f", key="tsa")
             stats_a = {"off":off_a, "def":def_a, "pace":pace_a, "ts":ts_a}
 
     with col_h:
         st.subheader(f"🏠 {h_team}")
         ref_h = st.text_input("ID Ref. ", key="ref_h").upper()
         if "Béisbol" in deporte:
-            db_h = st.session_state.stats_db.get(ref_h, {"era":4.0, "whip":1.2, "k":8.0, "avg":0.250, "ops":0.750, "war":1.5})
+            db_h = st.session_state.stats_db.get(ref_h, {})
             c1, c2, c3 = st.columns(3)
-            era_h = c1.number_input("ERA ", 0.0, 15.0, float(db_h['era']), key="erah")
-            whip_h = c2.number_input("WHIP ", 0.0, 3.0, float(db_h['whip']), key="whh")
-            k_h = c3.number_input("K/9 ", 0.0, 20.0, float(db_h['k']), key="kh")
+            era_h = c1.number_input("ERA ", 0.0, 15.0, float(db_h.get('era', 4.0)), key="erah")
+            whip_h = c2.number_input("WHIP ", 0.0, 3.0, float(db_h.get('whip', 1.2)), key="whh")
+            k_h = c3.number_input("K/9 ", 0.0, 20.0, float(db_h.get('k', 8.0)), key="kh")
             c4, c5, c6 = st.columns(3)
-            avg_h = c4.number_input("AVG ", 0.0, 0.400, float(db_h['avg']), format="%.3f", key="avgh")
-            ops_h = c5.number_input("OPS ", 0.0, 1.200, float(db_h['ops']), format="%.3f", key="opsh")
-            war_h = c6.number_input("WAR ", -2.0, 10.0, float(db_h['war']), key="warh")
+            avg_h = c4.number_input("AVG ", 0.0, 0.400, float(db_h.get('avg', 0.250)), format="%.3f", key="avgh")
+            ops_h = c5.number_input("OPS ", 0.0, 1.200, float(db_h.get('ops', 0.750)), format="%.3f", key="opsh")
+            war_h = c6.number_input("WAR ", -2.0, 10.0, float(db_h.get('war', 1.5)), key="warh")
             stats_h = {"era":era_h, "whip":whip_h, "k":k_h, "avg":avg_h, "ops":ops_h, "war":war_h}
         else:
-            db_h = st.session_state.stats_db.get(ref_h, {"off":110.0, "def":110.0, "pace":100.0, "ts":0.570})
-            c1, c2 = st.columns(2); off_h = c1.number_input("Off Rtg ", 90.0, 140.0, float(db_h['off']), key="offh"); def_h = c2.number_input("Def Rtg ", 90.0, 140.0, float(db_h['def']), key="defh")
-            c3, c4 = st.columns(2); pace_h = c3.number_input("Pace ", 80.0, 125.0, float(db_h['pace']), key="pach"); ts_h = c4.number_input("TS% ", 0.4, 0.7, float(db_h['ts']), format="%.3f", key="tsh")
+            db_h = st.session_state.stats_db.get(ref_h, {})
+            c1, c2 = st.columns(2); off_h = c1.number_input("Off Rtg ", 90.0, 140.0, float(db_h.get('off', 110.0)), key="offh"); def_h = c2.number_input("Def Rtg ", 90.0, 140.0, float(db_h.get('def', 110.0)), key="defh")
+            c3, c4 = st.columns(2); pace_h = c3.number_input("Pace ", 80.0, 125.0, float(db_h.get('pace', 100.0)), key="pach"); ts_h = c4.number_input("TS% ", 0.4, 0.7, float(db_h.get('ts', 0.570)), format="%.3f", key="tsh")
             stats_h = {"off":off_h, "def":def_h, "pace":pace_h, "ts":ts_h}
 
     if st.button("💎 GENERAR EUREKA V7"):
@@ -178,7 +174,6 @@ with tab1:
         ganador = h_team if sh > sa else a_team
         tipo_t = "ALTAS" if pt > linea_casa else "BAJAS"
         
-        # Persistencia
         st.session_state.stats_db[ref_a] = stats_a
         st.session_state.stats_db[ref_h] = stats_h
         with open(PITCHERS_DB, "w") as f: json.dump(st.session_state.stats_db, f)
@@ -187,7 +182,6 @@ with tab1:
         st.session_state.boveda_pro["historial"].append(analisis)
         with open(BOVEDA_ANALISIS, "w") as f: json.dump(st.session_state.boveda_pro, f, indent=4)
 
-        # UI Visual
         st.markdown(f"""<div class="eureka-card"><span class="status-badge">EUREKA V7 CONFIRMADO</span><h2 style="margin: 15px 0;">{a_team} vs {h_team}</h2><div style="display: flex; justify-content: space-around;"><div><div class="metric-label">Pick</div><div class="metric-val">{ganador}</div><div style="color:#00ffcc;">{certeza}% Certeza</div></div><div style="border-left:1px solid #333; height:70px;"></div><div><div class="metric-label">Proyección Total</div><div class="metric-val">{tipo_t}</div><div style="color:#888;">{round(pt,1)} vs {linea_casa}</div></div></div></div>""", unsafe_allow_html=True)
 
 with tab2:
