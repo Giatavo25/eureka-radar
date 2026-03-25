@@ -47,14 +47,16 @@ def cargar_json_seguro(archivo, defecto):
     return defecto
 
 def cargar_boveda_hoy(archivo):
+    # Usamos hora local de Venezuela (UTC-4)
     hoy = (datetime.utcnow() - timedelta(hours=4)).strftime('%Y-%m-%d')
     data = cargar_json_seguro(archivo, {"fecha": hoy, "datos": {}})
-    return data if data.get("fecha") == hoy else {"fecha": hoy, "datos": {}}
+    if data.get("fecha") != hoy:
+        return {"fecha": hoy, "datos": {}}
+    return data
 
 def cargar_historial_hoy():
     hoy = (datetime.utcnow() - timedelta(hours=4)).strftime('%Y-%m-%d')
     data = cargar_json_seguro(BOVEDA_ANALISIS, {"fecha": hoy, "historial": []})
-    # Blindaje contra errores de estructura
     if data.get("fecha") != hoy or "historial" not in data:
         return {"fecha": hoy, "historial": []}
     return data
@@ -88,13 +90,22 @@ c1, c2 = st.columns(2)
 with c1: deporte = st.selectbox("Categoría", list(LIGAS.keys()))
 with c2: liga = st.selectbox("Liga", list(LIGAS[deporte].keys()))
 
+# --- BLOQUE DE SINCRONIZACIÓN MEJORADO ---
 if st.button("🔥 SINCRONIZAR PARTIDOS DE HOY"):
     l_id = LIGAS[deporte][liga]
-    res = requests.get(f"https://api.the-odds-api.com/v4/sports/{l_id}/odds/?apiKey={KEYS[0]}&regions=us&markets=totals")
-    if res.status_code == 200:
-        st.session_state.boveda_api["datos"][l_id] = res.json()
-        with open(BOVEDA_API, "w") as f: json.dump(st.session_state.boveda_api, f)
-        st.success("Partidos Sincronizados Correctamente.")
+    with st.spinner(f"Conectando con el radar de {liga}..."):
+        # Intentamos con la primera llave, si falla podrías iterar las otras
+        url = f"https://api.the-odds-api.com/v4/sports/{l_id}/odds/?apiKey={KEYS[0]}&regions=us&markets=totals"
+        res = requests.get(url)
+        
+        if res.status_code == 200:
+            st.session_state.boveda_api["datos"][l_id] = res.json()
+            with open(BOVEDA_API, "w") as f: 
+                json.dump(st.session_state.boveda_api, f)
+            st.success(f"Radar actualizado: {len(res.json())} partidos encontrados.")
+            st.rerun() # FORZAMOS EL REFRESCO PARA QUE APAREZCAN LOS PARTIDOS
+        else:
+            st.error(f"Error de Radar ({res.status_code}): {res.text}")
 
 st.divider()
 tab1, tab2 = st.tabs(["🔬 Análisis Pro", "📂 Bóveda de Hoy"])
@@ -103,6 +114,8 @@ with tab1:
     l_id = LIGAS[deporte][liga]
     datos_api = st.session_state.boveda_api.get("datos", {}).get(l_id, [])
     hoy = st.session_state.boveda_api['fecha']
+    
+    # Filtro de partidos para la fecha actual
     opciones = [f"{j['away_team']} @ {j['home_team']}" for j in datos_api if j['commence_time'][:10] == hoy]
     
     if opciones:
@@ -112,28 +125,32 @@ with tab1:
         linea_casa = 220.0 if "Básquet" in deporte else 9.0
         try:
             j_data = next(i for i in datos_api if f"{i['away_team']} @ {i['home_team']}" == j_sel)
-            for m in j_data['bookmakers'][0]['markets']:
-                if m['key'] == 'totals': linea_casa = m['outcomes'][0]['point']
+            # Buscamos la línea de puntos (Totals)
+            for bm in j_data.get('bookmakers', []):
+                for market in bm.get('markets', []):
+                    if market['key'] == 'totals':
+                        linea_casa = market['outcomes'][0]['point']
+                        break
         except: pass
         
-        st.info(f"Línea de la Casa: {linea_casa}")
+        st.info(f"Línea de la Casa detectada: {linea_casa}")
 
         col_a, col_h = st.columns(2)
         with col_a:
-            st.subheader(a_team)
+            st.subheader(f"🚀 {a_team}")
             ref_a = st.text_input("Referencia (Lanzador/Equipo)", key="ref_a").upper()
             db_a = st.session_state.stats_db.get(ref_a, {"v1": 4.0 if "Béisbol" in deporte else 110.0, "v2": 0.250 if "Béisbol" in deporte else 110.0, "p": 99.0})
-            v1_a = st.number_input("ERA / Eficiencia Of.", 0.0, 150.0, float(db_a["v1"]), key="v1a")
-            v2_a = st.number_input("AVG / Eficiencia Def.", 0.0, 150.0, float(db_a["v2"]), key="v2a", format="%.3f" if "Béisbol" in deporte else "%.1f")
+            v1_a = st.number_input("Ofensiva / ERA", 0.0, 150.0, float(db_a["v1"]), key="v1a")
+            v2_a = st.number_input("Defensiva / AVG", 0.0, 150.0, float(db_a["v2"]), key="v2a", format="%.3f" if "Béisbol" in deporte else "%.1f")
             p_a = st.number_input("Ritmo (Pace)", 70.0, 130.0, float(db_a.get("p", 99.0)), key="pa") if "Básquet" in deporte else 0.0
 
         with col_h:
-            st.subheader(h_team)
-            ref_h = st.text_input("Referencia (Lanzador/Equipo)", key="ref_h").upper()
+            st.subheader(f"🏠 {h_team}")
+            ref_h = st.text_input("Referencia (Lanzador/Equipo) ", key="ref_h").upper()
             db_h = st.session_state.stats_db.get(ref_h, {"v1": 4.0 if "Béisbol" in deporte else 110.0, "v2": 0.250 if "Béisbol" in deporte else 110.0, "p": 99.0})
-            v1_h = st.number_input("ERA / Eficiencia Of. ", 0.0, 150.0, float(db_h["v1"]), key="v1h")
-            v2_h = st.number_input("AVG / Eficiencia Def. ", 0.0, 150.0, float(db_h["v2"]), key="v2h", format="%.3f" if "Béisbol" in deporte else "%.1f")
-            p_h = st.number_input("Ritmo (Pace) ", 70.0, 130.0, float(db_h.get("p", 99.0)), key="ph") if "Básquet" in deporte else 0.0
+            v1_h = st.number_input("Ofensiva / ERA  ", 0.0, 150.0, float(db_h["v1"]), key="v1h")
+            v2_h = st.number_input("Defensiva / AVG  ", 0.0, 150.0, float(db_h["v2"]), key="v2h", format="%.3f" if "Béisbol" in deporte else "%.1f")
+            p_h = st.number_input("Ritmo (Pace)  ", 70.0, 130.0, float(db_h.get("p", 99.0)), key="ph") if "Básquet" in deporte else 0.0
 
         if st.button("💎 GENERAR EUREKA"):
             if "Béisbol" in deporte:
@@ -153,7 +170,7 @@ with tab1:
             st.session_state.stats_db[ref_h] = {"v1": v1_h, "v2": v2_h, "p": p_h}
             with open(PITCHERS_DB, "w") as f: json.dump(st.session_state.stats_db, f)
 
-            # --- GUARDADO EN BÓVEDA (Con blindaje de errores) ---
+            # Guardado en Bóveda
             analisis = {
                 "hora": (datetime.utcnow() - timedelta(hours=4)).strftime("%H:%M"),
                 "partido": f"{a_team} @ {h_team}",
@@ -164,7 +181,6 @@ with tab1:
                 "linea": linea_casa
             }
             
-            # Asegurar que la lista existe antes de hacer append
             if "historial" not in st.session_state.boveda_pro:
                 st.session_state.boveda_pro["historial"] = []
             
@@ -172,10 +188,10 @@ with tab1:
             with open(BOVEDA_ANALISIS, "w") as f: 
                 json.dump(st.session_state.boveda_pro, f, indent=4)
 
-            # --- VISUALIZACIÓN ELITE ---
+            # VISUALIZACIÓN ELITE
             st.markdown(f"""
                 <div class="eureka-card">
-                    <span class="status-badge">EUREKA CONFIRMADO</span>
+                    <span class="status-badge">EUREKA DETECTADO</span>
                     <h2 style="margin: 15px 0;">{a_team} vs {h_team}</h2>
                     <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 20px;">
                         <div>
@@ -192,9 +208,11 @@ with tab1:
                     </div>
                 </div>
             """, unsafe_allow_html=True)
+    else:
+        st.warning("No hay partidos sincronizados para esta liga hoy. Pulsa el botón de arriba.")
 
 with tab2:
-    st.subheader("📋 Registro de Análisis de Hoy")
+    st.subheader("📋 Registro de Operaciones")
     hist = st.session_state.boveda_pro.get("historial", [])
     if hist:
         for op in reversed(hist):
@@ -204,4 +222,4 @@ with tab2:
                 c_2.metric("TIPO", op['mercado'], f"Línea: {op['linea']}")
                 c_3.metric("PROYECTADO", op['proy'])
     else:
-        st.info("La bóveda está esperando tu primer análisis.")
+        st.info("La bóveda está vacía.")
