@@ -8,7 +8,7 @@ import os
 KEYS = ["01a9b00e2d7b83171feae07178d45c40", "5bcbdf0c72072cd6fdb0d8cbbe37d8f4", "74b617c8a670220a94faac0cb4d575c2", "cdaae98920c7cd3383f7f70fe9fed71c"]
 BOVEDA_API = "boveda_eureka.json"
 BOVEDA_ANALISIS = "boveda_analisis_profundo.json"
-PITCHERS_DB = "boveda_stats_db.json" 
+PITCHERS_DB = "boveda_stats_db.json"
 
 st.set_page_config(page_title="RADAR SNIPER: EUREKA V7.0", layout="wide")
 
@@ -23,7 +23,6 @@ st.markdown("""
     .metric-val { font-size: 38px; font-weight: bold; color: #00ffcc; }
     .metric-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
     .status-badge { padding: 5px 15px; border-radius: 20px; font-weight: bold; background: #00ffcc; color: black; }
-    .sub-label { font-size: 10px; color: #555; margin-bottom: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -43,19 +42,17 @@ def cargar_boveda_hoy(archivo):
 def cargar_historial_hoy():
     hoy = (datetime.utcnow() - timedelta(hours=4)).strftime('%Y-%m-%d')
     data = cargar_json_seguro(BOVEDA_ANALISIS, {"fecha": hoy, "historial": []})
-    if data.get("fecha") != hoy or "historial" not in data: return {"fecha": hoy, "historial": []}
-    return data
+    return data if data.get("fecha") == hoy else {"fecha": hoy, "historial": []}
 
+# Inicialización de estados
 if 'boveda_api' not in st.session_state: st.session_state.boveda_api = cargar_boveda_hoy(BOVEDA_API)
 if 'boveda_pro' not in st.session_state: st.session_state.boveda_pro = cargar_historial_hoy()
 if 'stats_db' not in st.session_state: st.session_state.stats_db = cargar_json_seguro(PITCHERS_DB, {})
 
 # --- MOTORES AVANZADOS V7.0 ---
 def motor_beisbol_v7(h, a):
-    # Pitcheo (Menor es mejor)
     f_h = (h.get('era', 4.0) * 0.35) + (h.get('whip', 1.2) * 1.6) - (h.get('k', 8.0) / 100)
     f_a = (a.get('era', 4.0) * 0.35) + (a.get('whip', 1.2) * 1.6) - (a.get('k', 8.0) / 100)
-    # Bateo (Mayor es mejor)
     p_h = (h.get('ops', 0.750) * 6) + (h.get('avg', 0.250) * 12) + (h.get('war', 1.5) * 0.4)
     p_a = (a.get('ops', 0.750) * 6) + (a.get('avg', 0.250) * 12) + (a.get('war', 1.5) * 0.4)
     sh = p_h / (f_a if f_a > 0 else 1)
@@ -78,9 +75,9 @@ LIGAS = {
 col_cat, col_lig, col_mod = st.columns([1, 1, 1])
 with col_cat: deporte = st.selectbox("Categoría", list(LIGAS.keys()))
 with col_lig: liga = st.selectbox("Liga", list(LIGAS[deporte].keys()))
-with col_mod: modo = st.radio("Modo de Entrada", ["📡 Automático (API)", "✍️ Manual"], horizontal=True)
+with col_mod: modo = st.radio("Modo de Entrada", ["📡 Automático", "✍️ Manual"], horizontal=True)
 
-if modo == "📡 Automático (API)":
+if modo == "📡 Automático":
     if st.button("🔥 SINCRONIZAR RADAR"):
         l_id = LIGAS[deporte][liga]
         exito = False
@@ -89,16 +86,15 @@ if modo == "📡 Automático (API)":
             if res.status_code == 200:
                 st.session_state.boveda_api["datos"][l_id] = res.json()
                 with open(BOVEDA_API, "w") as f: json.dump(st.session_state.boveda_api, f)
-                st.success(f"Sincronizado con Llave {i+1}")
-                exito = True; break
+                st.success(f"Sincronizado con Llave {i+1}"); exito = True; break
         if exito: st.rerun()
-        else: st.error("Sin créditos API. Usa el modo Manual.")
+        else: st.error("Sin créditos API.")
 
 st.divider()
 tab1, tab2 = st.tabs(["🔬 Análisis Pro", "📂 Bóveda de Hoy"])
 
 with tab1:
-    if modo == "📡 Automático (API)":
+    if modo == "📡 Automático":
         l_id = LIGAS[deporte][liga]
         datos_api = st.session_state.boveda_api.get("datos", {}).get(l_id, [])
         hoy = (datetime.utcnow() - timedelta(hours=4)).strftime('%Y-%m-%d')
@@ -109,17 +105,14 @@ with tab1:
             linea_casa = 220.0 if "Básquet" in deporte else 9.0
             try:
                 j_data = next(i for i in datos_api if f"{i['away_team']} @ {i['home_team']}" == j_sel)
-                for bm in j_data.get('bookmakers', []):
-                    for market in bm.get('markets', []):
-                        if market['key'] == 'totals':
-                            linea_casa = market['outcomes'][0]['point']; break
+                linea_casa = j_data['bookmakers'][0]['markets'][0]['outcomes'][0]['point']
             except: pass
-        else: st.warning("No hay datos API para hoy. Sincroniza o usa Modo Manual."); st.stop()
+        else: st.warning("No hay datos API."); st.stop()
     else:
         cm1, cm2, cm3 = st.columns(3)
-        with cm1: a_team = st.text_input("Visitante", "TEAM A").upper()
-        with cm2: h_team = st.text_input("Local", "TEAM B").upper()
-        with cm3: linea_casa = st.number_input("Línea Casa", value=220.0 if "Básquet" in deporte else 9.0)
+        a_team = cm1.text_input("Visitante", "TEAM A").upper()
+        h_team = cm2.text_input("Local", "TEAM B").upper()
+        linea_casa = cm3.number_input("Línea Casa", value=220.0 if "Básquet" in deporte else 9.0)
 
     st.info(f"Analizando: {a_team} @ {h_team} | Línea: {linea_casa}")
     col_a, col_h = st.columns(2)
@@ -182,38 +175,24 @@ with tab1:
         ganador = h_team if sh > sa else a_team
         tipo_t = "ALTAS" if pt > linea_casa else "BAJAS"
         
-        # Persistencia en Bóveda de Stats
+        # Guardar stats y análisis
         if ref_a: st.session_state.stats_db[ref_a] = stats_a
         if ref_h: st.session_state.stats_db[ref_h] = stats_h
         with open(PITCHERS_DB, "w") as f: json.dump(st.session_state.stats_db, f)
 
-        # Guardado en Historial Profundo
-        analisis = {
-            "hora": (datetime.utcnow() - timedelta(hours=4)).strftime("%H:%M"), 
-            "partido": f"{a_team} @ {h_team}", 
-            "pick": ganador, "certeza": certeza, 
-            "proy": round(pt, 1), "mercado": tipo_t, "linea": linea_casa
-        }
+        analisis = {"hora": (datetime.utcnow() - timedelta(hours=4)).strftime("%H:%M"), "partido": f"{a_team} @ {h_team}", "pick": ganador, "certeza": certeza, "proy": round(pt, 1), "mercado": tipo_t, "linea": linea_casa}
         st.session_state.boveda_pro["historial"].append(analisis)
         with open(BOVEDA_ANALISIS, "w") as f: json.dump(st.session_state.boveda_pro, f, indent=4)
 
-        # Visualización
+        eureka_label = "🔥 EUREKA DETECTADO" if certeza >= 88 else "EUREKA V7 CONFIRMADO"
         st.markdown(f"""
             <div class="eureka-card">
-                <span class="status-badge">EUREKA V7 CONFIRMADO</span>
+                <span class="status-badge">{eureka_label}</span>
                 <h2 style="margin: 15px 0;">{a_team} vs {h_team}</h2>
                 <div style="display: flex; justify-content: space-around;">
-                    <div>
-                        <div class="metric-label">Pick</div>
-                        <div class="metric-val">{ganador}</div>
-                        <div style="color:#00ffcc;">{certeza}% Certeza</div>
-                    </div>
+                    <div><div class="metric-label">Pick</div><div class="metric-val">{ganador}</div><div style="color:#00ffcc;">{certeza}% Certeza</div></div>
                     <div style="border-left:1px solid #333; height:70px;"></div>
-                    <div>
-                        <div class="metric-label">Proyección Total</div>
-                        <div class="metric-val">{tipo_t}</div>
-                        <div style="color:#888;">{round(pt,1)} vs {linea_casa}</div>
-                    </div>
+                    <div><div class="metric-label">Proyección Total</div><div class="metric-val">{tipo_t}</div><div style="color:#888;">{round(pt,1)} vs {linea_casa}</div></div>
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -221,8 +200,7 @@ with tab1:
 with tab2:
     st.subheader("📋 Bóveda de Hoy")
     historial = st.session_state.boveda_pro.get("historial", [])
-    if not historial:
-        st.write("No hay análisis registrados todavía.")
+    if not historial: st.write("Sin registros.")
     for op in reversed(historial):
-        with st.expander(f"🕒 {op['hora']} - {op['partido']}"):
-            st.write(f"**Pick:** {op['pick']} ({op['certeza']}%) | **Mercado:** {op['mercado']} (Línea: {op['linea']}) | **Proy:** {op['proy']}")
+        with st.expander(f"🕒 {op['hora']} - {op['partido']} ({op['certeza']}%)"):
+            st.write(f"**Pick:** {op['pick']} | **Mercado:** {op['mercado']} | **Línea:** {op['linea']} | **Proy:** {op['proy']}")
