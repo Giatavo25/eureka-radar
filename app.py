@@ -52,18 +52,20 @@ if 'stats_db' not in st.session_state: st.session_state.stats_db = cargar_json_s
 
 # --- MOTORES AVANZADOS V7.0 ---
 def motor_beisbol_v7(h, a):
-    f_h = (h['era'] * 0.35) + (h['whip'] * 1.6) - (h['k'] / 100)
-    f_a = (a['era'] * 0.35) + (a['whip'] * 1.6) - (a['k'] / 100)
-    p_h = (h['ops'] * 6) + (h['avg'] * 12) + (h['war'] * 0.4)
-    p_a = (a['ops'] * 6) + (a['avg'] * 12) + (a['war'] * 0.4)
+    # Pitcheo (Menor es mejor)
+    f_h = (h.get('era', 4.0) * 0.35) + (h.get('whip', 1.2) * 1.6) - (h.get('k', 8.0) / 100)
+    f_a = (a.get('era', 4.0) * 0.35) + (a.get('whip', 1.2) * 1.6) - (a.get('k', 8.0) / 100)
+    # Bateo (Mayor es mejor)
+    p_h = (h.get('ops', 0.750) * 6) + (h.get('avg', 0.250) * 12) + (h.get('war', 1.5) * 0.4)
+    p_a = (a.get('ops', 0.750) * 6) + (a.get('avg', 0.250) * 12) + (a.get('war', 1.5) * 0.4)
     sh = p_h / (f_a if f_a > 0 else 1)
     sa = p_a / (f_h if f_h > 0 else 1)
     return sh, sa, (sh + sa) * 0.88
 
 def motor_basquet_v7(h, a):
-    ritmo = (h['pace'] + a['pace']) / 2
-    sh = ((h['off'] + a['def']) / 2) * (ritmo / 100) * (h['ts'] * 1.5)
-    sa = ((a['off'] + h['def']) / 2) * (ritmo / 100) * (a['ts'] * 1.5)
+    ritmo = (h.get('pace', 100.0) + a.get('pace', 100.0)) / 2
+    sh = ((h.get('off', 110.0) + a.get('def', 110.0)) / 2) * (ritmo / 100) * (h.get('ts', 0.570) * 1.5)
+    sa = ((a.get('off', 110.0) + h.get('def', 110.0)) / 2) * (ritmo / 100) * (a.get('ts', 0.570) * 1.5)
     return sh, sa, (sh + sa)
 
 # --- INTERFAZ ---
@@ -99,7 +101,7 @@ with tab1:
     if modo == "📡 Automático (API)":
         l_id = LIGAS[deporte][liga]
         datos_api = st.session_state.boveda_api.get("datos", {}).get(l_id, [])
-        hoy = st.session_state.boveda_api['fecha']
+        hoy = (datetime.utcnow() - timedelta(hours=4)).strftime('%Y-%m-%d')
         opciones = [f"{j['away_team']} @ {j['home_team']}" for j in datos_api if j['commence_time'][:10] == hoy]
         if opciones:
             j_sel = st.selectbox("Seleccione partido:", opciones)
@@ -112,7 +114,7 @@ with tab1:
                         if market['key'] == 'totals':
                             linea_casa = market['outcomes'][0]['point']; break
             except: pass
-        else: st.warning("No hay datos API. Usa el modo Manual."); st.stop()
+        else: st.warning("No hay datos API para hoy. Sincroniza o usa Modo Manual."); st.stop()
     else:
         cm1, cm2, cm3 = st.columns(3)
         with cm1: a_team = st.text_input("Visitante", "TEAM A").upper()
@@ -125,8 +127,8 @@ with tab1:
     with col_a:
         st.subheader(f"🚀 {a_team}")
         ref_a = st.text_input("ID Ref.", key="ref_a").upper()
+        db_a = st.session_state.stats_db.get(ref_a, {})
         if "Béisbol" in deporte:
-            db_a = st.session_state.stats_db.get(ref_a, {})
             c1, c2, c3 = st.columns(3)
             era_a = c1.number_input("ERA", 0.0, 15.0, float(db_a.get('era', 4.0)), key="eraa")
             whip_a = c2.number_input("WHIP", 0.0, 3.0, float(db_a.get('whip', 1.2)), key="wha")
@@ -137,16 +139,19 @@ with tab1:
             war_a = c6.number_input("WAR", -2.0, 10.0, float(db_a.get('war', 1.5)), key="wara")
             stats_a = {"era":era_a, "whip":whip_a, "k":k_a, "avg":avg_a, "ops":ops_a, "war":war_a}
         else:
-            db_a = st.session_state.stats_db.get(ref_a, {})
-            c1, c2 = st.columns(2); off_a = c1.number_input("Off Rtg", 90.0, 140.0, float(db_a.get('off', 110.0)), key="offa"); def_a = c2.number_input("Def Rtg", 90.0, 140.0, float(db_a.get('def', 110.0)), key="defa")
-            c3, c4 = st.columns(2); pace_a = c3.number_input("Pace", 80.0, 125.0, float(db_a.get('pace', 100.0)), key="paca"); ts_a = c4.number_input("TS%", 0.4, 0.7, float(db_a.get('ts', 0.570)), format="%.3f", key="tsa")
+            c1, c2 = st.columns(2)
+            off_a = c1.number_input("Off Rtg", 90.0, 140.0, float(db_a.get('off', 110.0)), key="offa")
+            def_a = c2.number_input("Def Rtg", 90.0, 140.0, float(db_a.get('def', 110.0)), key="defa")
+            c3, c4 = st.columns(2)
+            pace_a = c3.number_input("Pace", 80.0, 125.0, float(db_a.get('pace', 100.0)), key="paca")
+            ts_a = c4.number_input("TS%", 0.4, 0.7, float(db_a.get('ts', 0.570)), format="%.3f", key="tsa")
             stats_a = {"off":off_a, "def":def_a, "pace":pace_a, "ts":ts_a}
 
     with col_h:
         st.subheader(f"🏠 {h_team}")
         ref_h = st.text_input("ID Ref. ", key="ref_h").upper()
+        db_h = st.session_state.stats_db.get(ref_h, {})
         if "Béisbol" in deporte:
-            db_h = st.session_state.stats_db.get(ref_h, {})
             c1, c2, c3 = st.columns(3)
             era_h = c1.number_input("ERA ", 0.0, 15.0, float(db_h.get('era', 4.0)), key="erah")
             whip_h = c2.number_input("WHIP ", 0.0, 3.0, float(db_h.get('whip', 1.2)), key="whh")
@@ -157,9 +162,12 @@ with tab1:
             war_h = c6.number_input("WAR ", -2.0, 10.0, float(db_h.get('war', 1.5)), key="warh")
             stats_h = {"era":era_h, "whip":whip_h, "k":k_h, "avg":avg_h, "ops":ops_h, "war":war_h}
         else:
-            db_h = st.session_state.stats_db.get(ref_h, {})
-            c1, c2 = st.columns(2); off_h = c1.number_input("Off Rtg ", 90.0, 140.0, float(db_h.get('off', 110.0)), key="offh"); def_h = c2.number_input("Def Rtg ", 90.0, 140.0, float(db_h.get('def', 110.0)), key="defh")
-            c3, c4 = st.columns(2); pace_h = c3.number_input("Pace ", 80.0, 125.0, float(db_h.get('pace', 100.0)), key="pach"); ts_h = c4.number_input("TS% ", 0.4, 0.7, float(db_h.get('ts', 0.570)), format="%.3f", key="tsh")
+            c1, c2 = st.columns(2)
+            off_h = c1.number_input("Off Rtg ", 90.0, 140.0, float(db_h.get('off', 110.0)), key="offh")
+            def_h = c2.number_input("Def Rtg ", 90.0, 140.0, float(db_h.get('def', 110.0)), key="defh")
+            c3, c4 = st.columns(2)
+            pace_h = c3.number_input("Pace ", 80.0, 125.0, float(db_h.get('pace', 100.0)), key="pach")
+            ts_h = c4.number_input("TS% ", 0.4, 0.7, float(db_h.get('ts', 0.570)), format="%.3f", key="tsh")
             stats_h = {"off":off_h, "def":def_h, "pace":pace_h, "ts":ts_h}
 
     if st.button("💎 GENERAR EUREKA V7"):
@@ -174,18 +182,47 @@ with tab1:
         ganador = h_team if sh > sa else a_team
         tipo_t = "ALTAS" if pt > linea_casa else "BAJAS"
         
-        st.session_state.stats_db[ref_a] = stats_a
-        st.session_state.stats_db[ref_h] = stats_h
+        # Persistencia en Bóveda de Stats
+        if ref_a: st.session_state.stats_db[ref_a] = stats_a
+        if ref_h: st.session_state.stats_db[ref_h] = stats_h
         with open(PITCHERS_DB, "w") as f: json.dump(st.session_state.stats_db, f)
 
-        analisis = {"hora": (datetime.utcnow() - timedelta(hours=4)).strftime("%H:%M"), "partido": f"{a_team} @ {h_team}", "pick": ganador, "certeza": certeza, "proy": round(pt, 1), "mercado": tipo_t, "linea": linea_casa}
+        # Guardado en Historial Profundo
+        analisis = {
+            "hora": (datetime.utcnow() - timedelta(hours=4)).strftime("%H:%M"), 
+            "partido": f"{a_team} @ {h_team}", 
+            "pick": ganador, "certeza": certeza, 
+            "proy": round(pt, 1), "mercado": tipo_t, "linea": linea_casa
+        }
         st.session_state.boveda_pro["historial"].append(analisis)
         with open(BOVEDA_ANALISIS, "w") as f: json.dump(st.session_state.boveda_pro, f, indent=4)
 
-        st.markdown(f"""<div class="eureka-card"><span class="status-badge">EUREKA V7 CONFIRMADO</span><h2 style="margin: 15px 0;">{a_team} vs {h_team}</h2><div style="display: flex; justify-content: space-around;"><div><div class="metric-label">Pick</div><div class="metric-val">{ganador}</div><div style="color:#00ffcc;">{certeza}% Certeza</div></div><div style="border-left:1px solid #333; height:70px;"></div><div><div class="metric-label">Proyección Total</div><div class="metric-val">{tipo_t}</div><div style="color:#888;">{round(pt,1)} vs {linea_casa}</div></div></div></div>""", unsafe_allow_html=True)
+        # Visualización
+        st.markdown(f"""
+            <div class="eureka-card">
+                <span class="status-badge">EUREKA V7 CONFIRMADO</span>
+                <h2 style="margin: 15px 0;">{a_team} vs {h_team}</h2>
+                <div style="display: flex; justify-content: space-around;">
+                    <div>
+                        <div class="metric-label">Pick</div>
+                        <div class="metric-val">{ganador}</div>
+                        <div style="color:#00ffcc;">{certeza}% Certeza</div>
+                    </div>
+                    <div style="border-left:1px solid #333; height:70px;"></div>
+                    <div>
+                        <div class="metric-label">Proyección Total</div>
+                        <div class="metric-val">{tipo_t}</div>
+                        <div style="color:#888;">{round(pt,1)} vs {linea_casa}</div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
 with tab2:
     st.subheader("📋 Bóveda de Hoy")
-    for op in reversed(st.session_state.boveda_pro.get("historial", [])):
+    historial = st.session_state.boveda_pro.get("historial", [])
+    if not historial:
+        st.write("No hay análisis registrados todavía.")
+    for op in reversed(historial):
         with st.expander(f"🕒 {op['hora']} - {op['partido']}"):
             st.write(f"**Pick:** {op['pick']} ({op['certeza']}%) | **Mercado:** {op['mercado']} (Línea: {op['linea']}) | **Proy:** {op['proy']}")
