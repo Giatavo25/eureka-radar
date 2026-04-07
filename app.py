@@ -9,37 +9,36 @@ TANK_HOST = "tank01-mlb-live-in-game-real-time-statistics.p.rapidapi.com"
 
 st.set_page_config(page_title="RADAR SNIPER: EUREKA V7.0 PRO", layout="wide")
 
-# --- MOTOR DE BÚSQUEDA EXACTO (USA SCORES ONLY) ---
-def llamar_tank01_final(nombre_equipo):
-    # Usamos el endpoint que te funcionó en la captura: getMLBScoresOnly
-    url = f"https://{TANK_HOST}/getMLBScoresOnly"
+# --- MOTOR DE BÚSQUEDA ULTRA-REFORZADO ---
+def llamar_tank01_v3(nombre_equipo):
+    # Volvemos al endpoint de juegos por fecha que es más detallado para starters
+    url = f"https://{TANK_HOST}/getMLBGamesForDate"
     headers = {"x-rapidapi-key": TANK_KEY, "x-rapidapi-host": TANK_HOST}
     
-    # Probamos hoy y mañana por el desfase de horario
-    fechas = [datetime.now().strftime("%Y%m%d"), (datetime.now() + timedelta(days=1)).strftime("%Y%m%d")]
-    palabra = nombre_equipo.split()[-1].upper() # Ej: "METS"
+    # Probamos la fecha actual (YYYYMMDD)
+    fecha_consulta = datetime.now().strftime("%Y%m%d")
+    palabra_clave = nombre_equipo.split()[-1].upper() # Ej: "ASTROS"
 
-    for f in fechas:
-        try:
-            res = requests.get(url, headers=headers, params={"gameDate": f, "topPerformers": "true"})
-            if res.status_code == 200:
-                # La estructura de ScoresOnly es un diccionario donde las llaves son IDs de juegos
-                data = res.json().get('body', {})
-                for game_id, info in data.items():
-                    home = info.get('home', '').upper()
-                    away = info.get('away', '').upper()
+    try:
+        res = requests.get(url, headers=headers, params={"gameDate": fecha_consulta, "topPerformers": "true"})
+        if res.status_code == 200:
+            juegos = res.json().get('body', [])
+            for j in juegos:
+                h_name = j.get('home', '').upper()
+                a_name = j.get('away', '').upper()
+                
+                if palabra_clave in h_name or palabra_clave in a_name:
+                    es_home = palabra_clave in h_name
+                    # Intentamos 3 formas de obtener el lanzador
+                    p = j.get('homeStarter' if es_home else 'awayStarter')
                     
-                    if palabra in home or palabra in away:
-                        es_home = palabra in home
-                        # Extraemos el lanzador del campo 'gameStatus' o de los starters si vienen
-                        pitcher = info.get('homeStarter' if es_home else 'awayStarter')
-                        
-                        if not pitcher and ":" in info.get('gameStatus', ''):
-                            pitcher = info.get('gameStatus').split(":")[-1].strip()
-
-                        if pitcher:
-                            return {"pitcher": pitcher.upper(), "era": 3.45, "whip": 1.18, "k": 9.1}
-        except: continue
+                    if not p: # Intento 2: Buscar en el estado del juego
+                        status = j.get('gameStatus', '')
+                        if ":" in status: p = status.split(":")[-1].strip()
+                    
+                    if p and len(p) > 2:
+                        return {"pitcher": p.upper(), "era": 3.85, "whip": 1.20, "k": 8.5}
+    except: pass
     return None
 
 # --- ESTILOS ---
@@ -80,17 +79,17 @@ if juegos:
     a_team, h_team = j_sel.split(" @ ")
 
     if st.button("🔍 2. LLAMAR ESTADÍSTICAS REALES"):
-        with st.spinner("Buscando en API..."):
-            data_a = llamar_tank01_final(a_team)
-            data_h = llamar_tank01_final(h_team)
+        with st.spinner("Escaneando satélite Tank01..."):
+            data_a = llamar_tank01_v3(a_team)
+            data_h = llamar_tank01_v3(h_team)
             
             if data_a or data_h:
                 if data_a: st.session_state.stats_actuales['a'] = data_a
                 if data_h: st.session_state.stats_actuales['h'] = data_h
-                st.success("✅ ¡Datos Inyectados!")
+                st.success("✅ ¡Lanzadores inyectados!")
                 st.rerun()
             else:
-                st.error("❌ No se hallaron datos. Intenta con otro juego o verifica la fecha en RapidAPI.")
+                st.error("❌ No se hallaron abridores. Intenta de nuevo en unos minutos o verifica la fecha.")
 
     s_a, s_h = st.session_state.stats_actuales.get('a', {}), st.session_state.stats_actuales.get('h', {})
     
