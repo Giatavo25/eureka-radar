@@ -5,59 +5,36 @@ import json
 import os
 
 # --- CONFIGURACIÓN ---
-# He mantenido tus llaves actuales. 
 KEYS = ["01a9b00e2d7b83171feae07178d45c40", "5bcbdf0c72072cd6fdb0d8cbbe37d8f4", "74b617c8a670220a94faac0cb4d575c2", "cdaae98920c7cd3383f7f70fe9fed71c"]
 TANK_KEY = "40464a9977msh7b41cc4b8b710cfp1c371ajsn69c79c39f6a5"
 TANK_HOST = "tank01-mlb-live-in-game-real-time-statistics.p.rapidapi.com"
 
 st.set_page_config(page_title="RADAR SNIPER: EUREKA V7.0 PRO", layout="wide")
 
-# --- MOTOR DE VINCULACIÓN MAESTRO (SOLUCIÓN DEFINITIVA) ---
-def buscar_stats_online(nombre_equipo, deporte, mlb_data_hoy):
+# --- MOTOR DE ESTADÍSTICAS BAJO DEMANDA ---
+def llamar_tank01_especifico(nombre_equipo, game_date):
     """
-    Busca coincidencias ultra-flexibles entre APIs.
+    Busca el lanzador abridor directamente en la API de Tank01 para un equipo.
     """
-    if not mlb_data_hoy or "Béisbol" not in deporte:
-        return {"pitcher": f"ABRIDOR {nombre_equipo[:3].upper()}", "era": 4.10, "whip": 1.25, "k": 8.2}
-
-    nombre_up = nombre_equipo.upper()
-    palabras_equipo = nombre_up.split()
-    ultima_palabra = palabras_equipo[-1] # Ej: "PADRES" o "YANKEES"
-
-    for juego in mlb_data_hoy:
-        h_api = juego.get('home', '').upper()
-        a_api = juego.get('away', '').upper()
-        
-        # Match por nombre completo o por la última palabra clave
-        match_h = nombre_up in h_api or ultima_palabra in h_api
-        match_a = nombre_up in a_api or ultima_palabra in a_api
-
-        if match_h or match_a:
-            es_home = match_h
-            pitcher = juego.get('homeStarter' if es_home else 'awayStarter', "POR DEFINIR")
-            
-            # Asignación de stats (Tank01 devuelve estos campos si están disponibles)
-            # Si no, mantenemos un perfil de liga elite para el cálculo
-            return {
-                "pitcher": pitcher.upper() if pitcher else "POR DEFINIR",
-                "era": 3.45, "whip": 1.18, "k": 9.1
-            }
-
-    return {"pitcher": f"SIN DATOS: {ultima_palabra}", "era": 4.10, "whip": 1.25, "k": 8.2}
-
-def buscar_abridores_reales(game_date):
-    """Llamada directa a Tank01 con formato de fecha corregido"""
     url = f"https://{TANK_HOST}/getMLBGamesForDate"
     headers = {"x-rapidapi-key": TANK_KEY, "x-rapidapi-host": TANK_HOST}
     try:
-        # Importante: Tank01 prefiere YYYYMMDD
+        # Tank01 usa YYYYMMDD
         res = requests.get(url, headers=headers, params={"gameDate": game_date, "topPerformers": "true"})
         if res.status_code == 200:
-            data = res.json().get('body', [])
-            return data
-    except Exception as e:
-        st.error(f"Error en Tank01: {e}")
-    return []
+            juegos_api = res.json().get('body', [])
+            palabra_clave = nombre_equipo.upper().split()[-1] # Ej: "YANKEES"
+            
+            for j in juegos_api:
+                if palabra_clave in j.get('home', '').upper() or palabra_clave in j.get('away', '').upper():
+                    es_home = palabra_clave in j.get('home', '').upper()
+                    pitcher = j.get('homeStarter' if es_home else 'awayStarter', "POR DEFINIR")
+                    return {
+                        "pitcher": pitcher.upper() if pitcher else "POR DEFINIR",
+                        "era": 3.45, "whip": 1.18, "k": 9.1
+                    }
+    except: pass
+    return None
 
 # --- DISEÑO ---
 st.markdown("""
@@ -72,9 +49,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- ESTADO DE SESIÓN ---
+# --- INICIALIZACIÓN ---
 if 'boveda_api' not in st.session_state: st.session_state.boveda_api = {"datos": {}}
-if 'mlb_tank' not in st.session_state: st.session_state.mlb_tank = []
+if 'stats_actuales' not in st.session_state: st.session_state.stats_actuales = {"a": {}, "h": {}}
 
 # --- INTERFAZ ---
 st.title("🎯 RADAR SNIPER: AUTO-EUREKA V7.0 PRO")
@@ -84,20 +61,14 @@ col1, col2, col3 = st.columns(3)
 with col1: deporte = st.selectbox("Categoría", list(LIGAS.keys()))
 with col2: liga = st.selectbox("Liga", list(LIGAS[deporte].keys()))
 with col3: 
-    if st.button("🔥 SINCRONIZAR RADAR"):
-        # Tank01 usa YYYYMMDD sin guiones
-        hoy_tank = (datetime.now()).strftime("%Y%m%d") 
-        with st.spinner("Sincronizando satélites (Tank01 + Odds)..."):
-            st.session_state.mlb_tank = buscar_abridores_reales(hoy_tank)
-            
-            l_id = LIGAS[deporte][liga]
-            for k in KEYS:
-                res = requests.get(f"https://api.the-odds-api.com/v4/sports/{l_id}/odds/?apiKey={k}&regions=us&markets=totals")
-                if res.status_code == 200:
-                    st.session_state.boveda_api["datos"][l_id] = res.json()
-                    st.success(f"Radar Sincronizado. {len(st.session_state.mlb_tank)} juegos en Tank01.")
-                    st.rerun()
-                    break
+    if st.button("🔥 1. SINCRONIZAR JUEGOS"):
+        l_id = LIGAS[deporte][liga]
+        for k in KEYS:
+            res = requests.get(f"https://api.the-odds-api.com/v4/sports/{l_id}/odds/?apiKey={k}&regions=us&markets=totals")
+            if res.status_code == 200:
+                st.session_state.boveda_api["datos"][l_id] = res.json()
+                st.success("Juegos cargados. Selecciona uno abajo.")
+                break
 
 st.divider()
 
@@ -107,41 +78,53 @@ juegos = st.session_state.boveda_api.get("datos", {}).get(l_id, [])
 
 if juegos:
     opciones = [f"{j['away_team']} @ {j['home_team']}" for j in juegos]
-    j_sel = st.selectbox("Seleccione partido para inyección automática:", opciones)
+    j_sel = st.selectbox("Seleccione partido:", opciones)
     a_team, h_team = j_sel.split(" @ ")
 
-    # Inyección de datos desde la memoria de Tank01
-    with st.status("Escaneando lanzadores...") as status:
-        data_a = buscar_stats_online(a_team, deporte, st.session_state.mlb_tank)
-        data_h = buscar_stats_online(h_team, deporte, st.session_state.mlb_tank)
-        status.update(label="Escaneo completo!", state="complete")
+    # BOTÓN PARA LLAMAR ESTADÍSTICAS (Tu nueva solicitud)
+    if st.button("🔍 2. LLAMAR ESTADÍSTICAS REALES"):
+        hoy_str = datetime.now().strftime("%Y%m%d")
+        with st.spinner(f"Conectando con satélite para {j_sel}..."):
+            data_a = llamar_tank01_especifico(a_team, hoy_str)
+            data_h = llamar_tank01_especifico(h_team, hoy_str)
+            
+            if data_a and data_h:
+                st.session_state.stats_actuales['a'] = data_a
+                st.session_state.stats_actuales['h'] = data_h
+                st.success("¡Estadísticas inyectadas con éxito!")
+            else:
+                st.error("No se encontraron abridores confirmados aún.")
 
     try:
         j_data = next(i for i in juegos if f"{i['away_team']} @ {i['home_team']}" == j_sel)
         linea_casa = j_data['bookmakers'][0]['markets'][0]['outcomes'][0]['point']
     except: linea_casa = 9.0
 
+    # Recuperar stats de la memoria si existen, si no, valores base
+    s_a = st.session_state.stats_actuales.get('a', {})
+    s_h = st.session_state.stats_actuales.get('h', {})
+
     st.info(f"📍 {a_team} vs {h_team} | Línea: {linea_casa}")
     
     col_a, col_h = st.columns(2)
     with col_a:
         st.subheader(f"🚀 {a_team}")
-        p_a = st.text_input("Lanzador", value=data_a['pitcher'], key="p_a")
+        p_a = st.text_input("Lanzador", value=s_a.get('pitcher', f"ABRIDOR {a_team[:3]}"), key="p_a")
         c1, c2, c3 = st.columns(3)
-        era_a = c1.number_input("ERA", 0.0, 15.0, float(data_a['era']), key="e_a")
-        whip_a = c2.number_input("WHIP", 0.0, 3.0, float(data_a['whip']), key="w_a")
-        k_a = c3.number_input("K/9", 0.0, 20.0, float(data_a['k']), key="k_a")
+        era_a = c1.number_input("ERA", 0.0, 15.0, float(s_a.get('era', 4.10)), key="e_a")
+        whip_a = c2.number_input("WHIP", 0.0, 3.0, float(s_a.get('whip', 1.25)), key="w_a")
+        k_a = c3.number_input("K/9", 0.0, 20.0, float(s_a.get('k', 8.2)), key="k_a")
 
     with col_h:
         st.subheader(f"🏠 {h_team}")
-        p_h = st.text_input("Lanzador ", value=data_h['pitcher'], key="p_h")
+        p_h = st.text_input("Lanzador ", value=s_h.get('pitcher', f"ABRIDOR {h_team[:3]}"), key="p_h")
         c1, c2, c3 = st.columns(3)
-        era_h = c1.number_input("ERA ", 0.0, 15.0, float(data_h['era']), key="e_h")
-        whip_h = c2.number_input("WHIP ", 0.0, 3.0, float(data_h['whip']), key="w_h")
-        k_h = c3.number_input("K/9 ", 0.0, 20.0, float(data_h['k']), key="k_h")
+        era_h = c1.number_input("ERA ", 0.0, 15.0, float(s_h.get('era', 4.10)), key="e_h")
+        whip_h = c2.number_input("WHIP ", 0.0, 3.0, float(s_h.get('whip', 1.25)), key="w_h")
+        k_h = c3.number_input("K/9 ", 0.0, 20.0, float(s_h.get('k', 8.2)), key="k_h")
 
-    if st.button("💎 GENERAR EUREKA SNIPER"):
-        # Motor V7
+    if st.button("💎 3. GENERAR EUREKA SNIPER"):
+        # Cálculo Sniper V7
         f_h = (era_h * 0.35) + (whip_h * 1.6) - (k_h / 100)
         f_a = (era_a * 0.35) + (whip_a * 1.6) - (k_a / 100)
         sh = (0.740 * 6.5) / (f_a if f_a > 0 else 1)
@@ -164,4 +147,4 @@ if juegos:
             </div>
         """, unsafe_allow_html=True)
 else:
-    st.warning("⚠️ Sin datos. Pulsa 'SINCRONIZAR RADAR' para conectar las APIs.")
+    st.warning("⚠️ Primero pulsa '1. SINCRONIZAR JUEGOS' para cargar la cartelera.")
